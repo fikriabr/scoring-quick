@@ -1,0 +1,698 @@
+{
+  "pbtResults": {
+    "2.3 Tulis property test untuk Property 25: Backward Compatibility Of Existing Projects": {
+      "status": "passed",
+      "lastRunTimestamp": 1788514642491
+    },
+    "3.4 Tulis property test untuk Property 21: Project Type Determines URL Validation": {
+      "status": "passed",
+      "lastRunTimestamp": 1788488354881
+    },
+    "5.3 Tulis property test untuk Property 22: HTML Structure Metric Consistency": {
+      "status": "passed",
+      "lastRunTimestamp": 1788500933880
+    },
+    "6.4 Tulis property test untuk Property 26: Pasted Source Code Takes Precedence Over Fetched Markup": {
+      "status": "passed",
+      "lastRunTimestamp": 1788502864488
+    },
+    "7.4 Tulis property test untuk Property 23: Prompt Selection And Evidence Budget By Project Type": {
+      "status": "passed",
+      "lastRunTimestamp": 1788514641412
+    }
+  },
+  "executionHistory": {
+    "1.1 Ganti penamaan produk yang terlihat pengguna": [
+      {
+        "executionId": "ac3f9ac0-3e6e-448d-a022-e50f7049ed17",
+        "chatSessionId": "sess_cfb18a7f-35cf-44ac-99a4-850c21b973bf",
+        "timestamp": 1788478964416
+      },
+      {
+        "executionId": "ac3f9ac0-3e6e-448d-a022-e50f7049ed17",
+        "chatSessionId": "sess_cfb18a7f-35cf-44ac-99a4-850c21b973bf",
+        "timestamp": 1788479012616
+      },
+      {
+        "executionId": "ac3f9ac0-3e6e-448d-a022-e50f7049ed17",
+        "chatSessionId": "sess_cfb18a7f-35cf-44ac-99a4-850c21b973bf",
+        "timestamp": 1788479259862
+      }
+    ],
+    "1.2 Ganti identitas paket dan dokumentasi": [
+      {
+        "executionId": "ac3f9ac0-3e6e-448d-a022-e50f7049ed17",
+        "chatSessionId": "sess_cfb18a7f-35cf-44ac-99a4-850c21b973bf",
+        "timestamp": 1788478965273
+      },
+      {
+        "executionId": "ac3f9ac0-3e6e-448d-a022-e50f7049ed17",
+        "chatSessionId": "sess_cfb18a7f-35cf-44ac-99a4-850c21b973bf",
+        "timestamp": 1788479265430
+      },
+      {
+        "executionId": "ac3f9ac0-3e6e-448d-a022-e50f7049ed17",
+        "chatSessionId": "sess_cfb18a7f-35cf-44ac-99a4-850c21b973bf",
+        "timestamp": 1788479476293
+      }
+    ],
+    "1.3 **[BUTUH KONFIRMASI]** Putuskan cakupan rename folder repositori dan direktori `.kiro/specs/partyrock-assessment-tool/`": [
+      {
+        "executionId": "ac3f9ac0-3e6e-448d-a022-e50f7049ed17",
+        "chatSessionId": "sess_cfb18a7f-35cf-44ac-99a4-850c21b973bf",
+        "timestamp": 1788478965869
+      },
+      {
+        "executionId": "ac3f9ac0-3e6e-448d-a022-e50f7049ed17",
+        "chatSessionId": "sess_cfb18a7f-35cf-44ac-99a4-850c21b973bf",
+        "timestamp": 1788479485278
+      }
+    ],
+    "1.4 Verifikasi rebranding tidak merusak apa pun": [
+      {
+        "executionId": "ac3f9ac0-3e6e-448d-a022-e50f7049ed17",
+        "chatSessionId": "sess_cfb18a7f-35cf-44ac-99a4-850c21b973bf",
+        "timestamp": 1788478966496
+      },
+      {
+        "executionId": "ac3f9ac0-3e6e-448d-a022-e50f7049ed17",
+        "chatSessionId": "sess_cfb18a7f-35cf-44ac-99a4-850c21b973bf",
+        "timestamp": 1788479495347
+      },
+      {
+        "executionId": "ac3f9ac0-3e6e-448d-a022-e50f7049ed17",
+        "chatSessionId": "sess_cfb18a7f-35cf-44ac-99a4-850c21b973bf",
+        "timestamp": 1788479846045
+      }
+    ],
+    "2.1 Tambahkan `ProjectType` ke Prisma schema": [
+      {
+        "executionId": "ac3f9ac0-3e6e-448d-a022-e50f7049ed17",
+        "chatSessionId": "sess_cfb18a7f-35cf-44ac-99a4-850c21b973bf",
+        "timestamp": 1788478967031
+      },
+      {
+        "executionId": "ac3f9ac0-3e6e-448d-a022-e50f7049ed17",
+        "chatSessionId": "sess_cfb18a7f-35cf-44ac-99a4-850c21b973bf",
+        "timestamp": 1788479853998
+      },
+      {
+        "executionId": "ac3f9ac0-3e6e-448d-a022-e50f7049ed17",
+        "chatSessionId": "sess_cfb18a7f-35cf-44ac-99a4-850c21b973bf",
+        "timestamp": 1788483155100
+      }
+    ],
+    "2.2 Definisikan tipe TypeScript baru": [
+      {
+        "executionId": "ac3f9ac0-3e6e-448d-a022-e50f7049ed17",
+        "chatSessionId": "sess_cfb18a7f-35cf-44ac-99a4-850c21b973bf",
+        "timestamp": 1788478967602
+      },
+      {
+        "executionId": "ac3f9ac0-3e6e-448d-a022-e50f7049ed17",
+        "chatSessionId": "sess_cfb18a7f-35cf-44ac-99a4-850c21b973bf",
+        "timestamp": 1788483160977
+      },
+      {
+        "executionId": "ac3f9ac0-3e6e-448d-a022-e50f7049ed17",
+        "chatSessionId": "sess_cfb18a7f-35cf-44ac-99a4-850c21b973bf",
+        "timestamp": 1788483332690
+      }
+    ],
+    "2.3 Tulis property test untuk Property 25: Backward Compatibility Of Existing Projects": [
+      {
+        "executionId": "ac3f9ac0-3e6e-448d-a022-e50f7049ed17",
+        "chatSessionId": "sess_cfb18a7f-35cf-44ac-99a4-850c21b973bf",
+        "timestamp": 1788478968221
+      },
+      {
+        "executionId": "ac3f9ac0-3e6e-448d-a022-e50f7049ed17",
+        "chatSessionId": "sess_cfb18a7f-35cf-44ac-99a4-850c21b973bf",
+        "timestamp": 1788483337781
+      },
+      {
+        "executionId": "ac3f9ac0-3e6e-448d-a022-e50f7049ed17",
+        "chatSessionId": "sess_cfb18a7f-35cf-44ac-99a4-850c21b973bf",
+        "timestamp": 1788483818381
+      }
+    ],
+    "3.1 Satukan aturan URL yang terduplikasi ke satu modul": [
+      {
+        "executionId": "ac3f9ac0-3e6e-448d-a022-e50f7049ed17",
+        "chatSessionId": "sess_cfb18a7f-35cf-44ac-99a4-850c21b973bf",
+        "timestamp": 1788478968718
+      },
+      {
+        "executionId": "ac3f9ac0-3e6e-448d-a022-e50f7049ed17",
+        "chatSessionId": "sess_cfb18a7f-35cf-44ac-99a4-850c21b973bf",
+        "timestamp": 1788483825528
+      },
+      {
+        "executionId": "ac3f9ac0-3e6e-448d-a022-e50f7049ed17",
+        "chatSessionId": "sess_cfb18a7f-35cf-44ac-99a4-850c21b973bf",
+        "timestamp": 1788487144412
+      }
+    ],
+    "3.2 Terapkan validasi type-aware pada schema submission": [
+      {
+        "executionId": "ac3f9ac0-3e6e-448d-a022-e50f7049ed17",
+        "chatSessionId": "sess_cfb18a7f-35cf-44ac-99a4-850c21b973bf",
+        "timestamp": 1788478969268
+      },
+      {
+        "executionId": "ac3f9ac0-3e6e-448d-a022-e50f7049ed17",
+        "chatSessionId": "sess_cfb18a7f-35cf-44ac-99a4-850c21b973bf",
+        "timestamp": 1788487150711
+      },
+      {
+        "executionId": "ac3f9ac0-3e6e-448d-a022-e50f7049ed17",
+        "chatSessionId": "sess_cfb18a7f-35cf-44ac-99a4-850c21b973bf",
+        "timestamp": 1788487705110
+      }
+    ],
+    "3.3 Perbarui property test Property 5 yang kontraknya berubah": [
+      {
+        "executionId": "ac3f9ac0-3e6e-448d-a022-e50f7049ed17",
+        "chatSessionId": "sess_cfb18a7f-35cf-44ac-99a4-850c21b973bf",
+        "timestamp": 1788478969879
+      },
+      {
+        "executionId": "ac3f9ac0-3e6e-448d-a022-e50f7049ed17",
+        "chatSessionId": "sess_cfb18a7f-35cf-44ac-99a4-850c21b973bf",
+        "timestamp": 1788487710880
+      },
+      {
+        "executionId": "ac3f9ac0-3e6e-448d-a022-e50f7049ed17",
+        "chatSessionId": "sess_cfb18a7f-35cf-44ac-99a4-850c21b973bf",
+        "timestamp": 1788488031365
+      }
+    ],
+    "3.4 Tulis property test untuk Property 21: Project Type Determines URL Validation": [
+      {
+        "executionId": "ac3f9ac0-3e6e-448d-a022-e50f7049ed17",
+        "chatSessionId": "sess_cfb18a7f-35cf-44ac-99a4-850c21b973bf",
+        "timestamp": 1788478970384
+      },
+      {
+        "executionId": "ac3f9ac0-3e6e-448d-a022-e50f7049ed17",
+        "chatSessionId": "sess_cfb18a7f-35cf-44ac-99a4-850c21b973bf",
+        "timestamp": 1788488037366
+      },
+      {
+        "executionId": "ac3f9ac0-3e6e-448d-a022-e50f7049ed17",
+        "chatSessionId": "sess_cfb18a7f-35cf-44ac-99a4-850c21b973bf",
+        "timestamp": 1788488384739
+      }
+    ],
+    "4. Checkpoint — foundation dan validasi": [
+      {
+        "executionId": "ac3f9ac0-3e6e-448d-a022-e50f7049ed17",
+        "chatSessionId": "sess_cfb18a7f-35cf-44ac-99a4-850c21b973bf",
+        "timestamp": 1788478970967
+      },
+      {
+        "executionId": "ac3f9ac0-3e6e-448d-a022-e50f7049ed17",
+        "chatSessionId": "sess_cfb18a7f-35cf-44ac-99a4-850c21b973bf",
+        "timestamp": 1788488393024
+      },
+      {
+        "executionId": "ac3f9ac0-3e6e-448d-a022-e50f7049ed17",
+        "chatSessionId": "sess_cfb18a7f-35cf-44ac-99a4-850c21b973bf",
+        "timestamp": 1788488835244
+      }
+    ],
+    "5.1 **[BUTUH KONFIRMASI]** Tambahkan dependency parser HTML": [
+      {
+        "executionId": "ac3f9ac0-3e6e-448d-a022-e50f7049ed17",
+        "chatSessionId": "sess_cfb18a7f-35cf-44ac-99a4-850c21b973bf",
+        "timestamp": 1788478971584
+      },
+      {
+        "executionId": "ac3f9ac0-3e6e-448d-a022-e50f7049ed17",
+        "chatSessionId": "sess_cfb18a7f-35cf-44ac-99a4-850c21b973bf",
+        "timestamp": 1788488849204
+      },
+      {
+        "executionId": "ac3f9ac0-3e6e-448d-a022-e50f7049ed17",
+        "chatSessionId": "sess_cfb18a7f-35cf-44ac-99a4-850c21b973bf",
+        "timestamp": 1788489794762
+      }
+    ],
+    "5.2 Buat `lib/services/html-structure.service.ts`": [
+      {
+        "executionId": "ac3f9ac0-3e6e-448d-a022-e50f7049ed17",
+        "chatSessionId": "sess_cfb18a7f-35cf-44ac-99a4-850c21b973bf",
+        "timestamp": 1788478976349
+      },
+      {
+        "executionId": "ac3f9ac0-3e6e-448d-a022-e50f7049ed17",
+        "chatSessionId": "sess_cfb18a7f-35cf-44ac-99a4-850c21b973bf",
+        "timestamp": 1788489800987
+      },
+      {
+        "executionId": "ac3f9ac0-3e6e-448d-a022-e50f7049ed17",
+        "chatSessionId": "sess_cfb18a7f-35cf-44ac-99a4-850c21b973bf",
+        "timestamp": 1788496031265
+      }
+    ],
+    "5.3 Tulis property test untuk Property 22: HTML Structure Metric Consistency": [
+      {
+        "executionId": "ac3f9ac0-3e6e-448d-a022-e50f7049ed17",
+        "chatSessionId": "sess_cfb18a7f-35cf-44ac-99a4-850c21b973bf",
+        "timestamp": 1788478979861
+      },
+      {
+        "executionId": "ac3f9ac0-3e6e-448d-a022-e50f7049ed17",
+        "chatSessionId": "sess_cfb18a7f-35cf-44ac-99a4-850c21b973bf",
+        "timestamp": 1788496037079
+      },
+      {
+        "executionId": "ac3f9ac0-3e6e-448d-a022-e50f7049ed17",
+        "chatSessionId": "sess_cfb18a7f-35cf-44ac-99a4-850c21b973bf",
+        "timestamp": 1788501093828
+      }
+    ],
+    "6.1 Pecah ekstraksi `CrawlerService` menjadi strategi per tipe": [
+      {
+        "executionId": "ac3f9ac0-3e6e-448d-a022-e50f7049ed17",
+        "chatSessionId": "sess_cfb18a7f-35cf-44ac-99a4-850c21b973bf",
+        "timestamp": 1788478984476
+      },
+      {
+        "executionId": "ac3f9ac0-3e6e-448d-a022-e50f7049ed17",
+        "chatSessionId": "sess_cfb18a7f-35cf-44ac-99a4-850c21b973bf",
+        "timestamp": 1788501102514
+      },
+      {
+        "executionId": "ac3f9ac0-3e6e-448d-a022-e50f7049ed17",
+        "chatSessionId": "sess_cfb18a7f-35cf-44ac-99a4-850c21b973bf",
+        "timestamp": 1788501544366
+      }
+    ],
+    "6.2 Simpan `structure` pada upsert `CrawlMetadata` dan pertahankan status machine existing": [
+      {
+        "executionId": "ac3f9ac0-3e6e-448d-a022-e50f7049ed17",
+        "chatSessionId": "sess_cfb18a7f-35cf-44ac-99a4-850c21b973bf",
+        "timestamp": 1788478986572
+      },
+      {
+        "executionId": "ac3f9ac0-3e6e-448d-a022-e50f7049ed17",
+        "chatSessionId": "sess_cfb18a7f-35cf-44ac-99a4-850c21b973bf",
+        "timestamp": 1788501550362
+      },
+      {
+        "executionId": "ac3f9ac0-3e6e-448d-a022-e50f7049ed17",
+        "chatSessionId": "sess_cfb18a7f-35cf-44ac-99a4-850c21b973bf",
+        "timestamp": 1788501907481
+      }
+    ],
+    "6.3 Arahkan submission Project HTML ke jalur crawl": [
+      {
+        "executionId": "ac3f9ac0-3e6e-448d-a022-e50f7049ed17",
+        "chatSessionId": "sess_cfb18a7f-35cf-44ac-99a4-850c21b973bf",
+        "timestamp": 1788478987641
+      },
+      {
+        "executionId": "ac3f9ac0-3e6e-448d-a022-e50f7049ed17",
+        "chatSessionId": "sess_cfb18a7f-35cf-44ac-99a4-850c21b973bf",
+        "timestamp": 1788501913785
+      },
+      {
+        "executionId": "ac3f9ac0-3e6e-448d-a022-e50f7049ed17",
+        "chatSessionId": "sess_cfb18a7f-35cf-44ac-99a4-850c21b973bf",
+        "timestamp": 1788502178065
+      }
+    ],
+    "6.4 Tulis property test untuk Property 26: Pasted Source Code Takes Precedence Over Fetched Markup": [
+      {
+        "executionId": "ac3f9ac0-3e6e-448d-a022-e50f7049ed17",
+        "chatSessionId": "sess_cfb18a7f-35cf-44ac-99a4-850c21b973bf",
+        "timestamp": 1788478988493
+      },
+      {
+        "executionId": "ac3f9ac0-3e6e-448d-a022-e50f7049ed17",
+        "chatSessionId": "sess_cfb18a7f-35cf-44ac-99a4-850c21b973bf",
+        "timestamp": 1788502185328
+      },
+      {
+        "executionId": "ac3f9ac0-3e6e-448d-a022-e50f7049ed17",
+        "chatSessionId": "sess_cfb18a7f-35cf-44ac-99a4-850c21b973bf",
+        "timestamp": 1788502895102
+      }
+    ],
+    "7.1 Pecah `buildPrompt` menjadi dua builder": [
+      {
+        "executionId": "ac3f9ac0-3e6e-448d-a022-e50f7049ed17",
+        "chatSessionId": "sess_cfb18a7f-35cf-44ac-99a4-850c21b973bf",
+        "timestamp": 1788478989474
+      },
+      {
+        "executionId": "ac3f9ac0-3e6e-448d-a022-e50f7049ed17",
+        "chatSessionId": "sess_cfb18a7f-35cf-44ac-99a4-850c21b973bf",
+        "timestamp": 1788502909122
+      },
+      {
+        "executionId": "ac3f9ac0-3e6e-448d-a022-e50f7049ed17",
+        "chatSessionId": "sess_cfb18a7f-35cf-44ac-99a4-850c21b973bf",
+        "timestamp": 1788503474774
+      }
+    ],
+    "7.2 Terapkan anggaran karakter yang memprioritaskan ringkasan struktur": [
+      {
+        "executionId": "ac3f9ac0-3e6e-448d-a022-e50f7049ed17",
+        "chatSessionId": "sess_cfb18a7f-35cf-44ac-99a4-850c21b973bf",
+        "timestamp": 1788478990434
+      },
+      {
+        "executionId": "ac3f9ac0-3e6e-448d-a022-e50f7049ed17",
+        "chatSessionId": "sess_cfb18a7f-35cf-44ac-99a4-850c21b973bf",
+        "timestamp": 1788503482173
+      },
+      {
+        "executionId": "ac3f9ac0-3e6e-448d-a022-e50f7049ed17",
+        "chatSessionId": "sess_cfb18a7f-35cf-44ac-99a4-850c21b973bf",
+        "timestamp": 1788503939485
+      }
+    ],
+    "7.3 Teruskan `projectType` dan `structure` ke metadata scorer": [
+      {
+        "executionId": "ac3f9ac0-3e6e-448d-a022-e50f7049ed17",
+        "chatSessionId": "sess_cfb18a7f-35cf-44ac-99a4-850c21b973bf",
+        "timestamp": 1788478991322
+      },
+      {
+        "executionId": "ac3f9ac0-3e6e-448d-a022-e50f7049ed17",
+        "chatSessionId": "sess_cfb18a7f-35cf-44ac-99a4-850c21b973bf",
+        "timestamp": 1788503946066
+      },
+      {
+        "executionId": "ac3f9ac0-3e6e-448d-a022-e50f7049ed17",
+        "chatSessionId": "sess_cfb18a7f-35cf-44ac-99a4-850c21b973bf",
+        "timestamp": 1788504451469
+      }
+    ],
+    "7.4 Tulis property test untuk Property 23: Prompt Selection And Evidence Budget By Project Type": [
+      {
+        "executionId": "ac3f9ac0-3e6e-448d-a022-e50f7049ed17",
+        "chatSessionId": "sess_cfb18a7f-35cf-44ac-99a4-850c21b973bf",
+        "timestamp": 1788478992335
+      },
+      {
+        "executionId": "ac3f9ac0-3e6e-448d-a022-e50f7049ed17",
+        "chatSessionId": "sess_cfb18a7f-35cf-44ac-99a4-850c21b973bf",
+        "timestamp": 1788504463982
+      },
+      {
+        "executionId": "ac3f9ac0-3e6e-448d-a022-e50f7049ed17",
+        "chatSessionId": "sess_cfb18a7f-35cf-44ac-99a4-850c21b973bf",
+        "timestamp": 1788505385279
+      }
+    ],
+    "8. Checkpoint — pipeline HTML end-to-end": [
+      {
+        "executionId": "ac3f9ac0-3e6e-448d-a022-e50f7049ed17",
+        "chatSessionId": "sess_cfb18a7f-35cf-44ac-99a4-850c21b973bf",
+        "timestamp": 1788478993289
+      },
+      {
+        "executionId": "ac3f9ac0-3e6e-448d-a022-e50f7049ed17",
+        "chatSessionId": "sess_cfb18a7f-35cf-44ac-99a4-850c21b973bf",
+        "timestamp": 1788505394773
+      },
+      {
+        "executionId": "ac3f9ac0-3e6e-448d-a022-e50f7049ed17",
+        "chatSessionId": "sess_cfb18a7f-35cf-44ac-99a4-850c21b973bf",
+        "timestamp": 1788506195649
+      }
+    ],
+    "9.1 Tambahkan selector Tipe Project pada form submission tunggal": [
+      {
+        "executionId": "ac3f9ac0-3e6e-448d-a022-e50f7049ed17",
+        "chatSessionId": "sess_cfb18a7f-35cf-44ac-99a4-850c21b973bf",
+        "timestamp": 1788478994045
+      },
+      {
+        "executionId": "ac3f9ac0-3e6e-448d-a022-e50f7049ed17",
+        "chatSessionId": "sess_cfb18a7f-35cf-44ac-99a4-850c21b973bf",
+        "timestamp": 1788514697187
+      },
+      {
+        "executionId": "ac3f9ac0-3e6e-448d-a022-e50f7049ed17",
+        "chatSessionId": "sess_cfb18a7f-35cf-44ac-99a4-850c21b973bf",
+        "timestamp": 1788523760454
+      }
+    ],
+    "9.2 Tampilkan Tipe Project pada daftar dan detail submission": [
+      {
+        "executionId": "ac3f9ac0-3e6e-448d-a022-e50f7049ed17",
+        "chatSessionId": "sess_cfb18a7f-35cf-44ac-99a4-850c21b973bf",
+        "timestamp": 1788478994888
+      },
+      {
+        "executionId": "ac3f9ac0-3e6e-448d-a022-e50f7049ed17",
+        "chatSessionId": "sess_cfb18a7f-35cf-44ac-99a4-850c21b973bf",
+        "timestamp": 1788523772707
+      },
+      {
+        "executionId": "ac3f9ac0-3e6e-448d-a022-e50f7049ed17",
+        "chatSessionId": "sess_cfb18a7f-35cf-44ac-99a4-850c21b973bf",
+        "timestamp": 1788524151177
+      }
+    ],
+    "10.1 Buat endpoint update Source Code": [
+      {
+        "executionId": "ac3f9ac0-3e6e-448d-a022-e50f7049ed17",
+        "chatSessionId": "sess_cfb18a7f-35cf-44ac-99a4-850c21b973bf",
+        "timestamp": 1788478995677
+      },
+      {
+        "executionId": "ac3f9ac0-3e6e-448d-a022-e50f7049ed17",
+        "chatSessionId": "sess_cfb18a7f-35cf-44ac-99a4-850c21b973bf",
+        "timestamp": 1788524159095
+      },
+      {
+        "executionId": "ac3f9ac0-3e6e-448d-a022-e50f7049ed17",
+        "chatSessionId": "sess_cfb18a7f-35cf-44ac-99a4-850c21b973bf",
+        "timestamp": 1788524585512
+      }
+    ],
+    "10.2 Buat `components/SourceCodeEditor.tsx`": [
+      {
+        "executionId": "ac3f9ac0-3e6e-448d-a022-e50f7049ed17",
+        "chatSessionId": "sess_cfb18a7f-35cf-44ac-99a4-850c21b973bf",
+        "timestamp": 1788478996293
+      },
+      {
+        "executionId": "ac3f9ac0-3e6e-448d-a022-e50f7049ed17",
+        "chatSessionId": "sess_cfb18a7f-35cf-44ac-99a4-850c21b973bf",
+        "timestamp": 1788524594424
+      },
+      {
+        "executionId": "ac3f9ac0-3e6e-448d-a022-e50f7049ed17",
+        "chatSessionId": "sess_cfb18a7f-35cf-44ac-99a4-850c21b973bf",
+        "timestamp": 1788524867309
+      }
+    ],
+    "10.3 Render panel sesuai tipe pada halaman detail": [
+      {
+        "executionId": "ac3f9ac0-3e6e-448d-a022-e50f7049ed17",
+        "chatSessionId": "sess_cfb18a7f-35cf-44ac-99a4-850c21b973bf",
+        "timestamp": 1788478997265
+      },
+      {
+        "executionId": "ac3f9ac0-3e6e-448d-a022-e50f7049ed17",
+        "chatSessionId": "sess_cfb18a7f-35cf-44ac-99a4-850c21b973bf",
+        "timestamp": 1788524874233
+      },
+      {
+        "executionId": "ac3f9ac0-3e6e-448d-a022-e50f7049ed17",
+        "chatSessionId": "sess_cfb18a7f-35cf-44ac-99a4-850c21b973bf",
+        "timestamp": 1788525024362
+      }
+    ],
+    "10.4 Tulis property test untuk Property 24: Source Code Update Triggers Rescore": [
+      {
+        "executionId": "ac3f9ac0-3e6e-448d-a022-e50f7049ed17",
+        "chatSessionId": "sess_cfb18a7f-35cf-44ac-99a4-850c21b973bf",
+        "timestamp": 1788478998454
+      },
+      {
+        "executionId": "ac3f9ac0-3e6e-448d-a022-e50f7049ed17",
+        "chatSessionId": "sess_cfb18a7f-35cf-44ac-99a4-850c21b973bf",
+        "timestamp": 1788525033041
+      },
+      {
+        "executionId": "ac3f9ac0-3e6e-448d-a022-e50f7049ed17",
+        "chatSessionId": "sess_cfb18a7f-35cf-44ac-99a4-850c21b973bf",
+        "timestamp": 1788525461668
+      }
+    ],
+    "11.1 Lebarkan `loadDefaultParameters` agar menerima pilihan set": [
+      {
+        "executionId": "ac3f9ac0-3e6e-448d-a022-e50f7049ed17",
+        "chatSessionId": "sess_cfb18a7f-35cf-44ac-99a4-850c21b973bf",
+        "timestamp": 1788478999238
+      },
+      {
+        "executionId": "ac3f9ac0-3e6e-448d-a022-e50f7049ed17",
+        "chatSessionId": "sess_cfb18a7f-35cf-44ac-99a4-850c21b973bf",
+        "timestamp": 1788525471973
+      },
+      {
+        "executionId": "ac3f9ac0-3e6e-448d-a022-e50f7049ed17",
+        "chatSessionId": "sess_cfb18a7f-35cf-44ac-99a4-850c21b973bf",
+        "timestamp": 1788525865769
+      }
+    ],
+    "11.2 Sediakan pilihan set template di UI parameter": [
+      {
+        "executionId": "ac3f9ac0-3e6e-448d-a022-e50f7049ed17",
+        "chatSessionId": "sess_cfb18a7f-35cf-44ac-99a4-850c21b973bf",
+        "timestamp": 1788478999970
+      },
+      {
+        "executionId": "ac3f9ac0-3e6e-448d-a022-e50f7049ed17",
+        "chatSessionId": "sess_cfb18a7f-35cf-44ac-99a4-850c21b973bf",
+        "timestamp": 1788525894107
+      },
+      {
+        "executionId": "ac3f9ac0-3e6e-448d-a022-e50f7049ed17",
+        "chatSessionId": "sess_cfb18a7f-35cf-44ac-99a4-850c21b973bf",
+        "timestamp": 1788526561541
+      }
+    ],
+    "12.1 Tambahkan alias header dan normalisasi nilai": [
+      {
+        "executionId": "ac3f9ac0-3e6e-448d-a022-e50f7049ed17",
+        "chatSessionId": "sess_cfb18a7f-35cf-44ac-99a4-850c21b973bf",
+        "timestamp": 1788479000787
+      },
+      {
+        "executionId": "ac3f9ac0-3e6e-448d-a022-e50f7049ed17",
+        "chatSessionId": "sess_cfb18a7f-35cf-44ac-99a4-850c21b973bf",
+        "timestamp": 1788526571210
+      },
+      {
+        "executionId": "ac3f9ac0-3e6e-448d-a022-e50f7049ed17",
+        "chatSessionId": "sess_cfb18a7f-35cf-44ac-99a4-850c21b973bf",
+        "timestamp": 1788526879154
+      }
+    ],
+    "12.2 Pastikan baris dengan Tipe Project tidak dikenal ditolak per baris": [
+      {
+        "executionId": "ac3f9ac0-3e6e-448d-a022-e50f7049ed17",
+        "chatSessionId": "sess_cfb18a7f-35cf-44ac-99a4-850c21b973bf",
+        "timestamp": 1788479001504
+      },
+      {
+        "executionId": "ac3f9ac0-3e6e-448d-a022-e50f7049ed17",
+        "chatSessionId": "sess_cfb18a7f-35cf-44ac-99a4-850c21b973bf",
+        "timestamp": 1788526889421
+      }
+    ],
+    "12.3 Putuskan dan terapkan pemicuan crawl untuk row HTML pada bulk route": [
+      {
+        "executionId": "ac3f9ac0-3e6e-448d-a022-e50f7049ed17",
+        "chatSessionId": "sess_cfb18a7f-35cf-44ac-99a4-850c21b973bf",
+        "timestamp": 1788479002306
+      },
+      {
+        "executionId": "ac3f9ac0-3e6e-448d-a022-e50f7049ed17",
+        "chatSessionId": "sess_cfb18a7f-35cf-44ac-99a4-850c21b973bf",
+        "timestamp": 1788526896664
+      },
+      {
+        "executionId": "ac3f9ac0-3e6e-448d-a022-e50f7049ed17",
+        "chatSessionId": "sess_cfb18a7f-35cf-44ac-99a4-850c21b973bf",
+        "timestamp": 1788527242806
+      }
+    ],
+    "13. Checkpoint akhir — verifikasi menyeluruh": [
+      {
+        "executionId": "ac3f9ac0-3e6e-448d-a022-e50f7049ed17",
+        "chatSessionId": "sess_cfb18a7f-35cf-44ac-99a4-850c21b973bf",
+        "timestamp": 1788479002989
+      },
+      {
+        "executionId": "ac3f9ac0-3e6e-448d-a022-e50f7049ed17",
+        "chatSessionId": "sess_cfb18a7f-35cf-44ac-99a4-850c21b973bf",
+        "timestamp": 1788527259514
+      },
+      {
+        "executionId": "51641757-32b2-4a74-8eb8-f8406e2dce66",
+        "chatSessionId": "sess_cfb18a7f-35cf-44ac-99a4-850c21b973bf",
+        "timestamp": 1788535734039
+      }
+    ],
+    "1. Rebranding ke \"Scoring Project by PindAI\"": [
+      {
+        "executionId": "ac3f9ac0-3e6e-448d-a022-e50f7049ed17",
+        "chatSessionId": "sess_cfb18a7f-35cf-44ac-99a4-850c21b973bf",
+        "timestamp": 1788479846659
+      }
+    ],
+    "2. Foundation: skema database dan tipe data": [
+      {
+        "executionId": "ac3f9ac0-3e6e-448d-a022-e50f7049ed17",
+        "chatSessionId": "sess_cfb18a7f-35cf-44ac-99a4-850c21b973bf",
+        "timestamp": 1788483818854
+      }
+    ],
+    "3. Validasi URL type-aware": [
+      {
+        "executionId": "ac3f9ac0-3e6e-448d-a022-e50f7049ed17",
+        "chatSessionId": "sess_cfb18a7f-35cf-44ac-99a4-850c21b973bf",
+        "timestamp": 1788488385299
+      }
+    ],
+    "5. HTML Structure Extractor": [
+      {
+        "executionId": "ac3f9ac0-3e6e-448d-a022-e50f7049ed17",
+        "chatSessionId": "sess_cfb18a7f-35cf-44ac-99a4-850c21b973bf",
+        "timestamp": 1788501094864
+      }
+    ],
+    "6. Crawler per tipe project": [
+      {
+        "executionId": "ac3f9ac0-3e6e-448d-a022-e50f7049ed17",
+        "chatSessionId": "sess_cfb18a7f-35cf-44ac-99a4-850c21b973bf",
+        "timestamp": 1788502896056
+      }
+    ],
+    "7. Prompt AI per tipe project": [
+      {
+        "executionId": "ac3f9ac0-3e6e-448d-a022-e50f7049ed17",
+        "chatSessionId": "sess_cfb18a7f-35cf-44ac-99a4-850c21b973bf",
+        "timestamp": 1788505386189
+      }
+    ],
+    "9. UI submission: selector Tipe Project": [
+      {
+        "executionId": "ac3f9ac0-3e6e-448d-a022-e50f7049ed17",
+        "chatSessionId": "sess_cfb18a7f-35cf-44ac-99a4-850c21b973bf",
+        "timestamp": 1788524152421
+      }
+    ],
+    "10. Editor Source Code pasca-submit": [
+      {
+        "executionId": "ac3f9ac0-3e6e-448d-a022-e50f7049ed17",
+        "chatSessionId": "sess_cfb18a7f-35cf-44ac-99a4-850c21b973bf",
+        "timestamp": 1788525462680
+      }
+    ],
+    "11. Set parameter default untuk project web": [
+      {
+        "executionId": "ac3f9ac0-3e6e-448d-a022-e50f7049ed17",
+        "chatSessionId": "sess_cfb18a7f-35cf-44ac-99a4-850c21b973bf",
+        "timestamp": 1788526562575
+      }
+    ],
+    "12. Dukungan Tipe Project pada bulk CSV": [
+      {
+        "executionId": "ac3f9ac0-3e6e-448d-a022-e50f7049ed17",
+        "chatSessionId": "sess_cfb18a7f-35cf-44ac-99a4-850c21b973bf",
+        "timestamp": 1788527244455
+      }
+    ]
+  }
+}

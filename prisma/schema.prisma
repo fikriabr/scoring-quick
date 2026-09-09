@@ -1,0 +1,210 @@
+// prisma/schema.prisma
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  ADMIN
+  JURY
+}
+
+enum CrawlStatus {
+  PENDING
+  PROCESSING
+  SUCCESS
+  FAILED
+}
+
+enum ScoreStatus {
+  PENDING
+  PROCESSING
+  PARTIAL
+  SUCCESS
+  FAILED
+}
+
+enum ScoringMode {
+  AUTO
+  MANUAL
+}
+
+enum ProjectType {
+  PARTYROCK
+  HTML
+}
+
+model User {
+  id            String   @id @default(cuid())
+  name          String
+  email         String   @unique
+  passwordHash  String
+  role          Role     @default(JURY)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  categoryAssignments CategoryJury[]
+  scoreOverrides      ScoreOverride[]
+  auditLogs           AuditLog[]
+}
+
+model Event {
+  id          String     @id @default(cuid())
+  name        String
+  description String?
+  startDate   DateTime?
+  endDate     DateTime?
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
+
+  categories Category[]
+}
+
+model Category {
+  id          String   @id @default(cuid())
+  eventId     String
+  name        String
+  description String?
+  isPublished Boolean  @default(false)
+  publicToken String?  @unique
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  event           Event          @relation(fields: [eventId], references: [id])
+  parameters      Parameter[]
+  projects        Project[]
+  juryAssignments CategoryJury[]
+
+  @@unique([eventId, name])
+}
+
+model CategoryJury {
+  categoryId String
+  userId     String
+  assignedAt DateTime @default(now())
+
+  category Category @relation(fields: [categoryId], references: [id])
+  user     User     @relation(fields: [userId], references: [id])
+
+  @@id([categoryId, userId])
+}
+
+model Parameter {
+  id          String      @id @default(cuid())
+  categoryId  String
+  name        String
+  description String?
+  weight      Float
+  minScore    Float       @default(0)
+  maxScore    Float       @default(100)
+  scoringMode ScoringMode @default(AUTO)
+  orderIndex  Int         @default(0)
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+
+  category   Category    @relation(fields: [categoryId], references: [id])
+  aiScores   AIScore[]
+  juryScores JuryScore[]
+}
+
+model Project {
+  id              String      @id @default(cuid())
+  categoryId      String
+  url             String
+  participantName String
+  teamName        String?
+  projectType     ProjectType @default(PARTYROCK)
+  sourceCode      String?
+  crawlStatus     CrawlStatus @default(PENDING)
+  crawlError      String?
+  scoreStatus     ScoreStatus @default(PENDING)
+  finalScore      Float?
+  createdAt       DateTime    @default(now())
+  updatedAt       DateTime    @updatedAt
+
+  category   Category       @relation(fields: [categoryId], references: [id])
+  metadata   CrawlMetadata?
+  aiScores   AIScore[]
+  juryScores JuryScore[]
+  auditLogs  AuditLog[]
+
+  @@unique([categoryId, url])
+}
+
+model CrawlMetadata {
+  id          String   @id @default(cuid())
+  projectId   String   @unique
+  title       String?
+  description String?
+  widgets     Json
+  prompts     Json
+  widgetCount Int      @default(0)
+  rawHtml     String?
+  structure   Json?
+  crawledAt   DateTime @default(now())
+
+  project Project @relation(fields: [projectId], references: [id])
+}
+
+model AIScore {
+  id          String   @id @default(cuid())
+  projectId   String
+  parameterId String
+  score       Float
+  reasoning   String
+  scoredAt    DateTime @default(now())
+
+  project   Project   @relation(fields: [projectId], references: [id])
+  parameter Parameter @relation(fields: [parameterId], references: [id])
+
+  @@unique([projectId, parameterId])
+}
+
+model JuryScore {
+  id          String   @id @default(cuid())
+  projectId   String
+  parameterId String
+  juryId      String
+  score       Float
+  comment     String?
+  isOverride  Boolean  @default(false)
+  scoredAt    DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  project   Project   @relation(fields: [projectId], references: [id])
+  parameter Parameter @relation(fields: [parameterId], references: [id])
+
+  @@unique([projectId, parameterId, juryId])
+}
+
+model AuditLog {
+  id          String   @id @default(cuid())
+  projectId   String
+  userId      String
+  parameterId String?
+  action      String
+  oldValue    Json?
+  newValue    Json?
+  createdAt   DateTime @default(now())
+
+  project Project @relation(fields: [projectId], references: [id])
+  user    User    @relation(fields: [userId], references: [id])
+}
+
+model ScoreOverride {
+  id          String   @id @default(cuid())
+  userId      String
+  projectId   String
+  parameterId String
+  oldScore    Float
+  newScore    Float
+  comment     String
+  createdAt   DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id])
+}
