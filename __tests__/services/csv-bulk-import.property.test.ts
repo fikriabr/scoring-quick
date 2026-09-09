@@ -144,15 +144,14 @@ const invalidRowArb: fc.Arbitrary<{
   team_name?: string
   _invalidReason: 'bad_url' | 'empty_name'
 }> = fc.oneof(
-  // Bad URL (not partyrock.aws domain)
+  // Bad URL (unparseable, or a non-http(s) scheme — any hostname is otherwise valid)
   fc
     .oneof(
       fc.constantFrom(
-        'https://google.com/app',
-        'https://evil.com',
-        'https://partyrock.com/app',    // wrong TLD
-        'https://fakepartyrock.aws',    // wrong subdomain
         'not-a-url-at-all',
+        'ftp://example.com/app',
+        '//example.com/app',
+        'http://',
         '',
       ),
       fc
@@ -161,7 +160,7 @@ const invalidRowArb: fc.Arbitrary<{
           if (s.includes('\n') || s.includes('\r')) return false
           try {
             const u = new URL(s)
-            return u.hostname !== 'partyrock.aws' && !u.hostname.endsWith('.partyrock.aws')
+            return u.protocol !== 'http:' && u.protocol !== 'https:'
           } catch {
             return true // unparseable => invalid
           }
@@ -395,7 +394,7 @@ describe('Property 7: CSV Bulk Import Partial Success — deterministic edge cas
 
   it('single invalid row (bad URL): imported=0, errors has row=2', async () => {
     const csv = buildCsv([
-      { url: 'https://google.com', participant_name: 'Alice' },
+      { url: 'not-a-valid-url', participant_name: 'Alice' },
     ])
     const result = await bulkImportFromCsv(csv, CATEGORY_ID)
     expect(result.imported).toBe(0)
@@ -417,7 +416,7 @@ describe('Property 7: CSV Bulk Import Partial Success — deterministic edge cas
   it('mixed: valid-invalid-valid-invalid — row numbers are 3 and 5', async () => {
     const csv = buildCsv([
       { url: 'https://partyrock.aws/app/one', participant_name: 'Alice' },  // row 2 — valid
-      { url: 'https://evil.com', participant_name: 'Bob' },    // row 3 — invalid
+      { url: 'not-a-valid-url', participant_name: 'Bob' },    // row 3 — invalid
       { url: 'https://partyrock.aws/app/three', participant_name: 'Carol' },  // row 4 — valid
       { url: 'https://partyrock.aws/app/four', participant_name: '' },       // row 5 — invalid (empty name)
     ])
@@ -440,7 +439,7 @@ describe('Property 7: CSV Bulk Import Partial Success — deterministic edge cas
 
   it('all 3 rows invalid: imported=0, errors has rows [2,3,4]', async () => {
     const csv = buildCsv([
-      { url: 'https://evil.com', participant_name: 'Alice' },
+      { url: 'not-a-valid-url', participant_name: 'Alice' },
       { url: 'https://partyrock.aws/app/b', participant_name: '' },
       { url: 'not-a-url', participant_name: 'Carol' },
     ])
@@ -468,7 +467,7 @@ describe('Property 7: CSV Bulk Import Partial Success — deterministic edge cas
 
   it('error messages are non-empty strings for every rejection type', async () => {
     const csv = buildCsv([
-      { url: 'https://google.com', participant_name: 'X' },   // bad URL
+      { url: 'not-a-valid-url', participant_name: 'X' },   // bad URL
       { url: 'https://partyrock.aws/app/x', participant_name: '' },    // empty name
     ])
     const result = await bulkImportFromCsv(csv, CATEGORY_ID)

@@ -1,7 +1,7 @@
 {
-  "name": "scoring-project-pindai",
+  "name": "scoring-quick",
   "version": "1.0.0",
-  "description": "Scoring Project by PindAI — aplikasi penilaian kompetisi project dengan AI dan review juri",
+  "description": "Scoring Quick — aplikasi penilaian kompetisi project HTML dengan AI dan review juri",
   "type": "module",
   "main": "index.js",
   "scripts": {
@@ -11,8 +11,6 @@
     "postinstall": "prisma generate",
     "lint": "eslint .",
     "seed:admin": "node scripts/seed-admin.js",
-    "capture": "node scripts/partyrock-navigate.js",
-    "capture:clone-profile": "node scripts/clone-chrome-profile.js",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",
@@ -54,8 +52,6 @@
     "eslint": "9.39.5",
     "eslint-config-next": "16.3.0",
     "fast-check": "^4.9.0",
-    "patchright": "^1.61.1",
-    "playwright": "^1.62.1",
     "prisma": "^6.19.3",
     "typescript": "5.8",
     "vitest": "^4.1.10"

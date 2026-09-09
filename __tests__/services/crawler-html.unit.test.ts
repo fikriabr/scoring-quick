@@ -106,11 +106,6 @@ const HTML_DOC = `<!DOCTYPE html>
   </body>
 </html>`
 
-const PARTYROCK_DOC = `<!doctype html><html><head>
-  <title>Fallback Title</title>
-  <meta property="og:title" content="My PartyRock App">
-  <meta name="description" content="A creative AI application">
-</head><body></body></html>`
 
 function mockFetchHtmlOnce(html: string) {
   mockFetch.mockResolvedValueOnce({
@@ -176,7 +171,7 @@ describe('CrawlerService.crawl — HTML strategy', () => {
   it('keeps the fetched markup, derives structure, and reads title/description from the parser', async () => {
     mockFetchHtmlOnce(HTML_DOC)
 
-    const outcome = await CrawlerService.crawl('https://example.com/portfolio', 'HTML')
+    const outcome = await CrawlerService.crawl('https://example.com/portfolio')
 
     expect(outcome.rawHtml).toBe(HTML_DOC)
     expect(outcome.sourceCode).toBe(HTML_DOC)
@@ -198,7 +193,7 @@ describe('CrawlerService.crawl — HTML strategy', () => {
   it('leaves widget and prompt data empty — those are PartyRock concepts', async () => {
     mockFetchHtmlOnce(HTML_DOC)
 
-    const outcome = await CrawlerService.crawl('https://example.com/portfolio', 'HTML')
+    const outcome = await CrawlerService.crawl('https://example.com/portfolio')
 
     expect(outcome.widgets).toEqual([])
     expect(outcome.prompts).toEqual([])
@@ -212,7 +207,7 @@ describe('CrawlerService.crawl — HTML strategy', () => {
       '--></body></html>'
     mockFetchHtmlOnce(huge)
 
-    const outcome = await CrawlerService.crawl('https://example.com/big', 'HTML')
+    const outcome = await CrawlerService.crawl('https://example.com/big')
 
     expect(huge.length).toBeGreaterThan(200_000)
     expect(outcome.rawHtml).toHaveLength(200_000)
@@ -225,7 +220,7 @@ describe('CrawlerService.crawl — HTML strategy', () => {
   it('reports a document with no title or meta description as null rather than throwing', async () => {
     mockFetchHtmlOnce('<html><body><p>bare</p></body></html>')
 
-    const outcome = await CrawlerService.crawl('https://example.com/bare', 'HTML')
+    const outcome = await CrawlerService.crawl('https://example.com/bare')
 
     expect(outcome.title).toBeNull()
     expect(outcome.description).toBeNull()
@@ -236,44 +231,8 @@ describe('CrawlerService.crawl — HTML strategy', () => {
     mockFetch.mockResolvedValueOnce({ ok: false, status: 404, text: async () => '' })
 
     await expect(
-      CrawlerService.crawl('https://example.com/missing', 'HTML'),
+      CrawlerService.crawl('https://example.com/missing'),
     ).rejects.toThrow('HTTP 404')
-  })
-})
-
-// ---------------------------------------------------------------------------
-// crawl() — PartyRock strategy (unchanged behaviour)
-// ---------------------------------------------------------------------------
-
-describe('CrawlerService.crawl — PartyRock strategy', () => {
-  it('prefers og:title, reads the meta description, and retains no markup', async () => {
-    mockFetchHtmlOnce(PARTYROCK_DOC)
-
-    const outcome = await CrawlerService.crawl(
-      'https://partyrock.aws/app/test-app',
-      'PARTYROCK',
-    )
-
-    expect(outcome.title).toBe('My PartyRock App')
-    expect(outcome.description).toBe('A creative AI application')
-    expect(outcome.widgets).toEqual([])
-    expect(outcome.prompts).toEqual([])
-    expect(outcome.widgetCount).toBe(0)
-    // Not null — undefined, so triggerCrawl can tell "nothing to say" from
-    // "clear the column".
-    expect(outcome.rawHtml).toBeUndefined()
-    expect(outcome.structure).toBeUndefined()
-    expect(outcome.sourceCode).toBeUndefined()
-  })
-
-  it('defaults to the PartyRock strategy when no project type is passed', async () => {
-    mockFetchHtmlOnce(PARTYROCK_DOC)
-
-    const outcome = await CrawlerService.crawl('https://partyrock.aws/app/test-app')
-
-    expect(outcome.title).toBe('My PartyRock App')
-    expect(outcome.rawHtml).toBeUndefined()
-    expect(outcome.structure).toBeUndefined()
   })
 })
 
@@ -343,29 +302,6 @@ describe('CrawlerService.triggerCrawl — sourceCode precedence', () => {
     )
   })
 
-  it('does not touch rawHtml or sourceCode for a PARTYROCK project', async () => {
-    mockProjectFindUniqueOrThrow.mockResolvedValueOnce(
-      buildProjectRecord({
-        projectType: 'PARTYROCK',
-        url: 'https://partyrock.aws/app/test-app',
-        sourceCode: null,
-      }) as never,
-    )
-    mockFetchHtmlOnce(PARTYROCK_DOC)
-
-    await CrawlerService.triggerCrawl('project-1')
-
-    const upsertArg = mockCrawlMetadataUpsert.mock.calls[0][0] as {
-      create: Record<string, unknown>
-      update: Record<string, unknown>
-    }
-    // Capture Pipeline owns rawHtml for PartyRock projects — a crawl must not
-    // clear it.
-    expect(upsertArg.create).not.toHaveProperty('rawHtml')
-    expect(upsertArg.update).not.toHaveProperty('rawHtml')
-    expect(findProjectUpdateData('SUCCESS')).not.toHaveProperty('sourceCode')
-  })
-
   it('marks the crawl FAILED and leaves sourceCode alone when the fetch fails', async () => {
     mockProjectFindUniqueOrThrow.mockResolvedValueOnce(
       buildProjectRecord({ sourceCode: null }) as never,
@@ -431,23 +367,6 @@ describe('CrawlerService.triggerCrawl — structure persistence', () => {
     expect(findProjectUpdateData('SUCCESS')).not.toBeNull()
   })
 
-  it('does not write structure at all for a PARTYROCK project', async () => {
-    mockProjectFindUniqueOrThrow.mockResolvedValueOnce(
-      buildProjectRecord({
-        projectType: 'PARTYROCK',
-        url: 'https://partyrock.aws/app/test-app',
-      }) as never,
-    )
-    mockFetchHtmlOnce(PARTYROCK_DOC)
-
-    await CrawlerService.triggerCrawl('project-1')
-
-    const { create, update } = readUpsertPayloads()
-    // The key must be absent, not null: passing null would clear a structure
-    // some other writer may own, and PartyRock has no opinion on this column.
-    expect(create).not.toHaveProperty('structure')
-    expect(update).not.toHaveProperty('structure')
-  })
 })
 
 // ---------------------------------------------------------------------------
@@ -490,24 +409,6 @@ describe('CrawlerService.triggerCrawl — scoring after a failed fetch', () => {
   it('treats a whitespace-only sourceCode as no evidence at all', async () => {
     mockProjectFindUniqueOrThrow.mockResolvedValueOnce(
       buildProjectRecord({ sourceCode: '   \n\t ' }) as never,
-    )
-    mockFetch.mockRejectedValueOnce(new Error('HTTP 403'))
-
-    await CrawlerService.triggerCrawl('project-1')
-
-    expect(findProjectUpdateData('FAILED')).not.toBeNull()
-    expect(mockTriggerScoring).not.toHaveBeenCalled()
-  })
-
-  it('leaves PARTYROCK behaviour untouched — a failed crawl never triggers scoring', async () => {
-    mockProjectFindUniqueOrThrow.mockResolvedValueOnce(
-      buildProjectRecord({
-        projectType: 'PARTYROCK',
-        url: 'https://partyrock.aws/app/test-app',
-        // Capture Pipeline output; it schedules its own scoring run, so a
-        // failed crawl must not fire a second one (Requirement 8.2).
-        sourceCode: 'Widget: Chatbot\nPrompt: hello',
-      }) as never,
     )
     mockFetch.mockRejectedValueOnce(new Error('HTTP 403'))
 

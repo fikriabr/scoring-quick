@@ -67,7 +67,7 @@ vi.mock('@/lib/services/leaderboard.service', () => ({
 }))
 
 import { ScorerService } from '@/lib/services/scorer.service'
-import type { PartyRockMetadata, ScoringParameter } from '@/types'
+import type { ProjectMetadata, ScoringParameter } from '@/types'
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -149,10 +149,10 @@ function rawScoreInRange(minScore: number, maxScore: number): fc.Arbitrary<numbe
 }
 
 /**
- * Minimal but valid PartyRockMetadata — the prompt content doesn't matter
+ * Minimal but valid ProjectMetadata — the prompt content doesn't matter
  * for clamping behaviour; we just need a structurally valid object.
  */
-const metadataArb: fc.Arbitrary<PartyRockMetadata> = fc.record({
+const metadataArb: fc.Arbitrary<ProjectMetadata> = fc.record({
   title: fc.oneof(fc.constant(null), fc.string({ minLength: 1, maxLength: 80 })),
   description: fc.oneof(fc.constant(null), fc.string({ minLength: 0, maxLength: 300 })),
   widgets: fc.array(
@@ -264,7 +264,7 @@ describe('Property 10: AI Score Range Invariant', () => {
         scoreRangeArb,
         async ({ minScore, maxScore }) => {
           // Use a fixed metadata for simplicity
-          const metadata: PartyRockMetadata = {
+          const metadata: ProjectMetadata = {
             title: 'Test App',
             description: 'A test',
             widgets: [],
@@ -332,7 +332,7 @@ describe('Property 10: AI Score Range Invariant', () => {
       fc.asyncProperty(
         scoreRangeArb,
         async ({ minScore, maxScore }) => {
-          const metadata: PartyRockMetadata = {
+          const metadata: ProjectMetadata = {
             title: 'Test App',
             description: 'A test',
             widgets: [],
@@ -373,7 +373,7 @@ describe('Property 10: AI Score Range Invariant', () => {
       fc.asyncProperty(
         scoreRangeArb,
         async ({ minScore, maxScore }) => {
-          const metadata: PartyRockMetadata = {
+          const metadata: ProjectMetadata = {
             title: 'Test App',
             description: 'A test',
             widgets: [],
@@ -523,7 +523,7 @@ describe('Property 10: AI Score Range Invariant', () => {
 // ---------------------------------------------------------------------------
 
 describe('Property 10: AI Score Range Invariant — deterministic edge cases', () => {
-  const metadata: PartyRockMetadata = {
+  const metadata: ProjectMetadata = {
     title: 'Sample App',
     description: 'A sample application for testing',
     widgets: [{ type: 'ai-chat', label: 'Chat' }],

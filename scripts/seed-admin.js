@@ -7,7 +7,7 @@ const hash = await bcrypt.hash('admin123', 10)
 
 const result = await sql`
   INSERT INTO "User" (id, name, email, "passwordHash", role, "createdAt", "updatedAt")
-  VALUES (gen_random_uuid(), ${'Admin'}, ${'admin@partyrock.local'}, ${hash}, ${'ADMIN'}::"Role", now(), now())
+  VALUES (gen_random_uuid(), ${'Admin'}, ${'admin@scoring-quick.local'}, ${hash}, ${'ADMIN'}::"Role", now(), now())
   ON CONFLICT (email) DO NOTHING
   RETURNING email, role
 `

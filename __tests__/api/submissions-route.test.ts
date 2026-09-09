@@ -1,19 +1,11 @@
 /**
- * Unit Tests: POST /api/submissions — pipeline entry point per project type
- *
- * Requirements: 3.1
+ * Unit Tests: POST /api/submissions — pipeline entry point
  *
  * The route creates the Project and then kicks off exactly one asynchronous
- * entry point, chosen by `Project.projectType`:
- *
- *   HTML      → CrawlerService.triggerCrawl, which fetches the live URL,
- *               stores `rawHtml`/`structure`, and calls triggerScoring itself.
- *   PARTYROCK → ScorerService.triggerScoring directly, exactly as before.
- *
- * The pairing is exclusive in both directions, and that is the point of these
- * tests: because `triggerCrawl` already ends in a `triggerScoring` call on
- * every path it can finish on, calling both from here would score the project
- * twice.
+ * entry point: `CrawlerService.triggerCrawl`, which fetches the live URL,
+ * stores `rawHtml`/`structure`, and calls `triggerScoring` itself. The route
+ * must never also call `triggerScoring` directly — that would score the
+ * project twice.
  *
  * Everything below the route is mocked — the route's only job is dispatch, so
  * the assertions are about which entry point was called, not about what it
@@ -107,15 +99,7 @@ function buildProjectRecord(overrides: Record<string, unknown> = {}) {
 }
 
 const HTML_BODY = {
-  projectType: 'HTML',
   url: 'https://example.com/portfolio',
-  participantName: 'Test User',
-  categoryId: 'clabcdef0001',
-}
-
-const PARTYROCK_BODY = {
-  projectType: 'PARTYROCK',
-  url: 'https://partyrock.aws/app/abc123',
   participantName: 'Test User',
   categoryId: 'clabcdef0001',
 }
@@ -179,49 +163,6 @@ describe('POST /api/submissions — HTML projects take the crawl path', () => {
     expect(json.id).toBe('project-1')
 
     consoleError.mockRestore()
-  })
-})
-
-// ---------------------------------------------------------------------------
-// PARTYROCK → direct scoring path (unchanged behaviour)
-// ---------------------------------------------------------------------------
-
-describe('POST /api/submissions — PARTYROCK projects score directly', () => {
-  it('triggers scoring and never triggers a crawl', async () => {
-    mockSubmitProject.mockResolvedValueOnce(
-      buildProjectRecord({
-        projectType: 'PARTYROCK',
-        url: 'https://partyrock.aws/app/abc123',
-      }) as never,
-    )
-
-    const response = await POST(buildRequest(PARTYROCK_BODY))
-
-    expect(response.status).toBe(201)
-    expect(mockTriggerScoring).toHaveBeenCalledExactlyOnceWith('project-1')
-    expect(mockTriggerCrawl).not.toHaveBeenCalled()
-  })
-
-  it('scores directly for a project whose type came from the schema default', async () => {
-    // `SubmissionSchema` defaults `projectType` to PARTYROCK, so a payload
-    // without the field must behave exactly as it did before this feature.
-    mockSubmitProject.mockResolvedValueOnce(
-      buildProjectRecord({
-        projectType: 'PARTYROCK',
-        url: 'https://partyrock.aws/app/abc123',
-      }) as never,
-    )
-
-    await POST(
-      buildRequest({
-        url: 'https://partyrock.aws/app/abc123',
-        participantName: 'Test User',
-        categoryId: 'clabcdef0001',
-      }),
-    )
-
-    expect(mockTriggerScoring).toHaveBeenCalledExactlyOnceWith('project-1')
-    expect(mockTriggerCrawl).not.toHaveBeenCalled()
   })
 })
 

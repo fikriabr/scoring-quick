@@ -8,18 +8,11 @@
 import { useState, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
 // Same rule module the server-side schemas use, so client and server can never
-// drift apart. Requirements: 2.5
+// drift apart.
 import { validateProjectUrl } from '@/lib/validators/url-rules'
 // Prisma-free module, so the shared limit can be read without pulling the
 // Prisma runtime (which `@/lib/validators/schemas` does) into the bundle.
-// Requirements: 5.3
 import { MAX_SOURCE_CODE_LENGTH } from '@/lib/validators/source-code-rules'
-// Display labels shared with the submissions list and the project detail page,
-// so one project type never shows up under two different names.
-// Requirements: 1.7
-import { PROJECT_TYPE_LABELS, PROJECT_TYPE_ORDER } from '@/lib/project-type'
-// Type-only import: the Prisma runtime never reaches the client bundle.
-import type { ProjectType } from '@prisma/client'
 
 interface Category {
   id: string
@@ -33,51 +26,15 @@ interface Category {
 // Prisma-free module the schemas read it from.
 const MAX_NAME_LENGTH = 255
 
-/**
- * Every piece of user-facing copy that depends on the selected project type,
- * collected in one place so the JSX below stays free of scattered ternaries.
- * Adding a project type to the Prisma enum makes this map fail to typecheck,
- * which is the point — the copy is not allowed to silently fall behind.
- *
- * The type's own name is not here: it comes from `PROJECT_TYPE_LABELS` in
- * `@/lib/project-type`, which the submissions list and the detail page read
- * too.
- *
- * Requirements: 1.3, 1.4, 2.4
- */
-const PROJECT_TYPE_COPY: Record<
-  ProjectType,
-  {
-    urlLabel: string
-    urlPlaceholder: string
-    urlHelp: string
-    sourceCodePlaceholder: string
-    sourceCodeHelp: string
-    successMessage: string
-  }
-> = {
-  PARTYROCK: {
-    urlLabel: 'PartyRock URL',
-    urlPlaceholder: 'https://partyrock.aws/u/...',
-    urlHelp: 'Must be a partyrock.aws URL',
-    sourceCodePlaceholder:
-      "Paste the app's widget configuration / prompts / source here...",
-    sourceCodeHelp:
-      'The AI scorer treats this as its primary evidence. Leave blank to fill it in later via the capture pipeline.',
-    // PARTYROCK submissions go straight to scoring — no crawl step.
-    successMessage: 'Project submitted successfully. AI scoring started.',
-  },
-  HTML: {
-    urlLabel: 'Project URL',
-    urlPlaceholder: 'https://example.com/my-project',
-    urlHelp: 'Any hostname is accepted, as long as the URL uses http or https.',
-    sourceCodePlaceholder: "Paste the page's HTML markup here...",
-    sourceCodeHelp:
-      "The AI scorer derives the page's HTML structure from this. Leave blank to let the crawler fetch the markup from the URL instead.",
-    // HTML submissions are crawled first, and scoring follows the crawl.
-    successMessage:
-      'Project submitted successfully. Fetching the page, then AI scoring starts.',
-  },
+const FORM_COPY = {
+  urlLabel: 'Project URL',
+  urlPlaceholder: 'https://example.com/my-project',
+  urlHelp: 'Any hostname is accepted, as long as the URL uses http or https.',
+  sourceCodePlaceholder: "Paste the page's HTML markup here...",
+  sourceCodeHelp:
+    "The AI scorer derives the page's HTML structure from this. Leave blank to let the crawler fetch the markup from the URL instead.",
+  successMessage:
+    'Project submitted successfully. Fetching the page, then AI scoring starts.',
 }
 
 interface SubmissionFormProps {
@@ -149,11 +106,8 @@ function SingleSubmissionForm({
   const [globalError, setGlobalError] = useState<string | null>(null)
   const [successMessage, setSuccessMessage] = useState<string | null>(null)
   const [sourceCodeLength, setSourceCodeLength] = useState(0)
-  // Controlled, because the copy and validation of the fields below read from
-  // it. Defaults to PARTYROCK to match the Prisma column default.
-  const [projectType, setProjectType] = useState<ProjectType>('PARTYROCK')
 
-  const copy = PROJECT_TYPE_COPY[projectType]
+  const copy = FORM_COPY
 
   async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault()
@@ -169,7 +123,6 @@ function SingleSubmissionForm({
     // sourceCode, categoryId). Empty optional fields are sent as undefined so
     // the service writes SQL NULL rather than an empty string.
     const payload = {
-      projectType,
       url: (formData.get('url') as string).trim(),
       participantName: (formData.get('participantName') as string).trim(),
       teamName: (formData.get('teamName') as string).trim() || undefined,
@@ -184,8 +137,8 @@ function SingleSubmissionForm({
       fieldErrors.url = 'URL is required'
     } else {
       // Same rule, same argument the server gets — so the single submission
-      // route, the CSV import, and this form always agree. Requirements: 2.5
-      const urlCheck = validateProjectUrl(payload.url, payload.projectType)
+      // route, the CSV import, and this form always agree.
+      const urlCheck = validateProjectUrl(payload.url)
       if (!urlCheck.ok) fieldErrors.url = urlCheck.message
     }
     if (!payload.participantName) {
@@ -280,35 +233,6 @@ function SingleSubmissionForm({
         {errors.categoryId && (
           <p className="mt-1.5 text-sm text-red-600">{errors.categoryId}</p>
         )}
-      </div>
-
-      {/* Project Type select — placed before the URL field because it decides
-          which validation rule and which copy the fields below use.
-          Requirements: 1.3, 1.4 */}
-      <div>
-        <label
-          htmlFor="projectType"
-          className="block text-sm font-medium text-gray-700 mb-1.5"
-        >
-          Project Type <span className="text-red-500">*</span>
-        </label>
-        <select
-          id="projectType"
-          name="projectType"
-          value={projectType}
-          onChange={(e) => setProjectType(e.target.value as ProjectType)}
-          required
-          className="w-full px-3 py-2.5 rounded-lg border border-gray-200 bg-gray-50 text-sm transition-colors focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
-        >
-          {PROJECT_TYPE_ORDER.map((type) => (
-            <option key={type} value={type}>
-              {PROJECT_TYPE_LABELS[type]}
-            </option>
-          ))}
-        </select>
-        <p className="mt-1.5 text-xs text-gray-400">
-          Decides how the URL is validated and how the project is scored.
-        </p>
       </div>
 
       {/* URL field */}
@@ -542,11 +466,8 @@ function CsvUploadForm({
         <p className="mt-1.5 text-xs text-gray-400">
           CSV columns: <code>url</code>, <code>participant_name</code>,{' '}
           <code>team_name</code> (optional), <code>source_code</code>{' '}
-          (optional), <code>project_type</code> (optional —{' '}
-          <code>PARTYROCK</code> or <code>HTML</code>, defaults to{' '}
-          <code>PARTYROCK</code> when the column or cell is empty). Header
-          casing and spacing don&apos;t matter, and <code>,</code>{' '}
-          <code>;</code> or tab separated files all work.
+          (optional). Header casing and spacing don&apos;t matter, and{' '}
+          <code>,</code> <code>;</code> or tab separated files all work.
         </p>
       </div>
 

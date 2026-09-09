@@ -21,14 +21,12 @@ export type ActionResult = {
 
 // -----------------------------------------------------------------------
 // loadDefaultParametersAction
-// Seeds the category with the chosen default parameter set (5 parameters
-// totalling 100% weight). Defaults to PARTYROCK so existing callers are
-// unaffected.
-// Requirements: 2.4, 6.1, 6.3, 6.4
+// Seeds the category with the default parameter set (5 parameters totalling
+// 100% weight).
 // -----------------------------------------------------------------------
 export async function loadDefaultParametersAction(
   categoryId: string,
-  set: DefaultParameterSet = 'PARTYROCK',
+  set: DefaultParameterSet = 'HTML',
 ): Promise<ActionResult> {
   const session = await auth()
   if (!session || session.user.role !== 'ADMIN') {

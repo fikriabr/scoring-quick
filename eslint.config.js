@@ -10,13 +10,7 @@ import typescript from 'eslint-config-next/typescript'
 
 const config = [
   {
-    ignores: [
-      '.next/**',
-      'node_modules/**',
-      'next-env.d.ts',
-      // Written for the browser as a plain script, not part of the app build.
-      'public/partyrock-capture.js',
-    ],
+    ignores: ['.next/**', 'node_modules/**', 'next-env.d.ts'],
   },
   ...coreWebVitals,
   ...typescript,

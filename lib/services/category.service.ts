@@ -165,14 +165,12 @@ export {
 
 // -----------------------------------------------------------------------
 // loadDefaultParameters
-// Seeds the category with the chosen default parameter set (5 parameters
-// totalling 100% weight). Defaults to PARTYROCK so existing callers keep
-// their current behaviour.
-// Requirements: 2.4, 6.1, 6.2, 6.4
+// Seeds the category with the default parameter set (5 parameters totalling
+// 100% weight).
 // -----------------------------------------------------------------------
 export async function loadDefaultParameters(
   categoryId: string,
-  set: DefaultParameterSet = 'PARTYROCK',
+  set: DefaultParameterSet = 'HTML',
 ) {
   const defaults = getDefaultParameterSet(set)
 

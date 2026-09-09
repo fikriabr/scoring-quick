@@ -8,7 +8,7 @@ import {
   CsvRowRawSchema,
   type SubmissionInput,
 } from '@/lib/validators/schemas'
-import type { Project, ProjectType } from '@prisma/client'
+import type { Project } from '@prisma/client'
 
 // -----------------------------------------------------------------------
 // Types
@@ -25,19 +25,17 @@ export class DuplicateUrlError extends Error {
 }
 
 /**
- * A project this import actually created, identified well enough for the caller
- * to start the right pipeline for it.
+ * A project this import actually created, identified well enough for the
+ * caller to start the crawl pipeline for it.
  *
- * The bulk route needs this because "start a crawl for the HTML rows" is
+ * The bulk route needs this because "start a crawl for the imported rows" is
  * otherwise unanswerable: a count tells you how many rows landed but not which
  * projects they became. Re-deriving the set with a query (recent PENDING rows
  * in the category, newest first, limited to the count) sweeps up unrelated
  * projects that happen to still be PENDING from an earlier import.
- * Requirements: 3.1
  */
 export type CsvImportedProject = {
   id: string
-  projectType: ProjectType
 }
 
 export type CsvImportResult = {
@@ -119,20 +117,6 @@ const HEADER_ALIASES: Record<string, string> = {
   categoryid: 'categoryId',
   category: 'categoryId',
   kategori: 'categoryId',
-  // projectType — `project_type` and `projectType` are the header names the
-  // requirement names explicitly; the rest follow the same aliasing pattern as
-  // the fields above (`Project Type`, `project-type` and `PROJECT_TYPE` all
-  // normalise to `project_type`, and `projectType` to `projecttype`).
-  // An absent column, or a blank cell, falls back to PARTYROCK in the schema.
-  // Requirements: 1.5
-  project_type: 'projectType',
-  projecttype: 'projectType',
-  type: 'projectType',
-  tipe_project: 'projectType',
-  tipeproject: 'projectType',
-  tipe_proyek: 'projectType',
-  tipeproyek: 'projectType',
-  tipe: 'projectType',
 }
 
 function canonicalHeader(raw: string): string {
@@ -190,9 +174,6 @@ export async function submitProject(input: unknown): Promise<Project> {
     data: {
       categoryId: data.categoryId,
       url: data.url,
-      // Always present on parsed data — SubmissionSchema defaults it to
-      // PARTYROCK when the caller omits the field.
-      projectType: data.projectType,
       participantName: data.participantName,
       teamName: data.teamName ?? null,
       sourceCode: data.sourceCode ?? null,
@@ -313,10 +294,7 @@ export async function bulkImportFromCsv(
       continue
     }
 
-    // `projectType` is always present on parsed data — CsvRowSchema defaults it
-    // to PARTYROCK when the column is absent or the cell is blank.
-    const { url, projectType, participantName, teamName, sourceCode } =
-      parsed.data
+    const { url, participantName, teamName, sourceCode } = parsed.data
 
     try {
       // Skip silently if exact duplicate (same URL + categoryId) already exists
@@ -336,7 +314,6 @@ export async function bulkImportFromCsv(
         data: {
           categoryId,
           url,
-          projectType,
           participantName,
           teamName: teamName ?? null,
           sourceCode: sourceCode ?? null,
@@ -345,11 +322,7 @@ export async function bulkImportFromCsv(
         },
       })
 
-      // `id` comes from the row the write returned; `projectType` comes from the
-      // validated input rather than from that row, because it is the same value
-      // and reading it back adds a dependency on the shape of the returned
-      // record for no gain.
-      created.push({ id: project.id, projectType })
+      created.push({ id: project.id })
     } catch (err) {
       // Catch unexpected DB errors per-row so other rows still process
       const message =

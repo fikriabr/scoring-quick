@@ -9,8 +9,6 @@
 
 import Link from 'next/link'
 import { useState } from 'react'
-import type { ProjectType } from '@prisma/client'
-import ProjectTypeBadge from '@/components/ProjectTypeBadge'
 
 // -----------------------------------------------------------------------
 // SerializedProject — shape of a project row as rendered by this table
@@ -18,7 +16,6 @@ import ProjectTypeBadge from '@/components/ProjectTypeBadge'
 export type SerializedProject = {
   id: string
   url: string
-  projectType: ProjectType
   participantName: string
   teamName: string | null
   crawlStatus: string
@@ -60,9 +57,6 @@ export default function ProjectsTable({
               </th>
               <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">
                 URL
-              </th>
-              <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">
-                Type
               </th>
               <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">
                 Crawl
@@ -152,9 +146,6 @@ function ProjectRow({ project }: { project: SerializedProject }) {
         >
           {project.url}
         </a>
-      </td>
-      <td className="px-4 py-3 whitespace-nowrap">
-        <ProjectTypeBadge projectType={project.projectType} />
       </td>
       <td className="px-4 py-3">
         <StatusBadge status={project.crawlStatus} />

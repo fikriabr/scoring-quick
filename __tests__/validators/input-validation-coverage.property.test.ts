@@ -61,10 +61,10 @@ describe('Property 19: handleApiError — response envelope', () => {
       () => EventSchema.parse({}),
       // CategorySchema — missing name + eventId
       () => CategorySchema.parse({}),
-      // SubmissionSchema — wrong domain
+      // SubmissionSchema — malformed URL
       () =>
         SubmissionSchema.parse({
-          url: 'https://google.com',
+          url: 'not-a-valid-url',
           participantName: 'Test',
           categoryId: 'abc',
         }),
@@ -347,28 +347,19 @@ describe('Property 19: CategorySchema — invalid inputs are rejected', () => {
 
 describe('Property 19: SubmissionSchema — invalid inputs are rejected', () => {
   /**
-   * P19-J: SubmissionSchema rejects any URL that is not on partyrock.aws.
+   * P19-J: SubmissionSchema rejects malformed URLs and non-http(s) schemes.
    *
    * **Validates: Requirements 9.3**
    */
-  it('P19-J: SubmissionSchema rejects non-partyrock.aws URLs', () => {
+  it('P19-J: SubmissionSchema rejects malformed or non-web-scheme URLs', () => {
     fc.assert(
       fc.property(
         fc.oneof(
-          fc.constant('https://google.com/app'),
-          fc.constant('https://amazon.com'),
-          fc.constant('https://partyrock.com'),
-          fc.constant('https://evil.partyrock.aws.fake.com'),
           fc.constant('not-a-url'),
           fc.constant(''),
-          fc.webUrl().filter((url) => {
-            try {
-              const h = new URL(url).hostname
-              return h !== 'partyrock.aws' && !h.endsWith('.partyrock.aws')
-            } catch {
-              return true
-            }
-          }),
+          fc.constant('ftp://example.com/app'),
+          fc.constant('//example.com/app'),
+          fc.constant('http://'),
         ),
         (url) => {
           const result = SubmissionSchema.safeParse({
@@ -384,17 +375,17 @@ describe('Property 19: SubmissionSchema — invalid inputs are rejected', () => 
   })
 
   /**
-   * P19-K: SubmissionSchema accepts valid partyrock.aws URLs with valid participant data.
+   * P19-K: SubmissionSchema accepts any well-formed http(s) URL, any hostname.
    *
    * **Validates: Requirements 9.3**
    */
-  it('P19-K: SubmissionSchema accepts valid partyrock.aws URLs', () => {
+  it('P19-K: SubmissionSchema accepts any well-formed http(s) URL', () => {
     fc.assert(
       fc.property(
         fc.oneof(
           fc.constant('https://partyrock.aws/app/abc'),
-          fc.constant('https://partyrock.aws/'),
-          fc.constant('https://app.partyrock.aws/demo'),
+          fc.constant('https://example.com/'),
+          fc.constant('http://app.example.dev/demo'),
         ),
         fc.string({ minLength: 1, maxLength: 255 }),
         (url, participantName) => {

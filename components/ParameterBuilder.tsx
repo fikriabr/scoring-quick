@@ -76,9 +76,9 @@ export default function ParameterBuilder({
   const [error, setError] = useState<string | null>(null)
   const [successMessage, setSuccessMessage] = useState<string | null>(null)
   const [isPending, startTransition] = useTransition()
-  // Which template the Load button will seed. Requirement 6.3.
+  // Which template the Load button will seed.
   const [selectedSet, setSelectedSet] =
-    useState<DefaultParameterSet>('PARTYROCK')
+    useState<DefaultParameterSet>('HTML')
   // Set to true once the admin has been warned that loading appends rows to a
   // category that already has parameters; reset on every other interaction.
   const [awaitingLoadConfirm, setAwaitingLoadConfirm] = useState(false)

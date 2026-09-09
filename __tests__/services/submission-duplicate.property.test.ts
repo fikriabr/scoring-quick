@@ -395,9 +395,9 @@ describe('Property 6: Submission Duplicate Prevention — deterministic edge cas
     expect(mockCreate).toHaveBeenCalledTimes(2)
   })
 
-  it('invalid URL (non-partyrock domain) is rejected by Zod before any DB call', async () => {
+  it('invalid URL (malformed) is rejected by Zod before any DB call', async () => {
     await expect(
-      submitProject({ url: 'https://evil.com/app', categoryId, participantName }),
+      submitProject({ url: 'not-a-valid-url', categoryId, participantName }),
     ).rejects.toThrow()
 
     expect(mockFindFirst).not.toHaveBeenCalled()

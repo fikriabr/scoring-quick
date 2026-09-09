@@ -1,14 +1,9 @@
 // components/SourceCodeEditor.tsx
-// Post-submit Source Code editor, shown on the project detail page for BOTH
-// project types (Requirement 5.1) — unlike `CaptureImportPanel`, which is
-// PartyRock-only (Requirement 5.5).
+// Post-submit Source Code editor, shown on the project detail page.
 //
-// This is the escape hatch for an HTML project whose URL the crawler cannot
-// fetch, and the correction path for a PartyRock project whose captured
-// payload came out wrong. Saving posts to `PATCH /api/submissions/[id]`, which
-// stores the value, flips `scoreStatus` to PENDING and re-triggers scoring.
-//
-// Requirements: 5.1, 5.6
+// This is the escape hatch for a project whose URL the crawler cannot fetch.
+// Saving posts to `PATCH /api/submissions/[id]`, which stores the value, flips
+// `scoreStatus` to PENDING and re-triggers scoring.
 
 'use client'
 
@@ -16,45 +11,23 @@ import { useState, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
 // Prisma-free module: the constant cannot come from `@/lib/validators/schemas`,
 // which imports the Prisma enums as values and would pull the Prisma runtime
-// into the client bundle. Requirements: 5.3
+// into the client bundle.
 import { MAX_SOURCE_CODE_LENGTH } from '@/lib/validators/source-code-rules'
-// Shared display label, so this panel names a project type the same way the
-// submissions list, the detail header and the submission form do.
-import { projectTypeLabel } from '@/lib/project-type'
-// Type-only import: the Prisma runtime never reaches the client bundle.
-import type { ProjectType } from '@prisma/client'
 
-/**
- * Copy that depends on the project type. Keyed by the enum so adding a project
- * type makes this map fail to typecheck rather than silently falling back to
- * PartyRock wording.
- */
-const PROJECT_TYPE_COPY: Record<
-  ProjectType,
-  { help: string; placeholder: string }
-> = {
-  PARTYROCK: {
-    help: 'Fill in the widget configuration, prompts, or captured source. This is the primary evidence the AI scores.',
-    placeholder:
-      'Paste the captured widget configuration / prompts / source here...',
-  },
-  HTML: {
-    help: "Fill in the page's HTML markup. Used when the project URL cannot be fetched, and replaces the crawled markup.",
-    placeholder: "Paste the page's HTML markup here...",
-  },
+const COPY = {
+  help: "Fill in the page's HTML markup. Used when the project URL cannot be fetched, and replaces the crawled markup.",
+  placeholder: "Paste the page's HTML markup here...",
 }
 
 interface SourceCodeEditorProps {
   projectId: string
   /** Current column value. `null` when nothing has been stored yet. */
   sourceCode: string | null
-  projectType: ProjectType
 }
 
 export default function SourceCodeEditor({
   projectId,
   sourceCode,
-  projectType,
 }: SourceCodeEditorProps) {
   const router = useRouter()
   const [isPending, startTransition] = useTransition()
@@ -70,7 +43,7 @@ export default function SourceCodeEditor({
     text: string
   } | null>(null)
 
-  const copy = PROJECT_TYPE_COPY[projectType]
+  const copy = COPY
   const isUnchanged = draft === saved
   const isTooLong = draft.length > MAX_SOURCE_CODE_LENGTH
 
@@ -136,11 +109,7 @@ export default function SourceCodeEditor({
       </div>
 
       <p className="mt-1 text-sm text-gray-500">
-        {copy.help} This project is of type{' '}
-        <span className="font-medium text-gray-700">
-          {projectTypeLabel(projectType)}
-        </span>
-        . Saving changes re-triggers AI scoring.
+        {copy.help} Saving changes re-triggers AI scoring.
       </p>
 
       <textarea

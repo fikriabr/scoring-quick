@@ -3,7 +3,6 @@
 // Requirements: 5.1, 5.2, 5.3, 5.4, 5.5, 5.6, 5.7, 5.8, 5.9
 
 import { GoogleGenerativeAI } from '@google/generative-ai'
-import { ProjectType } from '@prisma/client'
 import { revalidatePath } from 'next/cache'
 import { db } from '@/lib/db'
 import {
@@ -27,87 +26,7 @@ import type {
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY ?? '')
 
 // -----------------------------------------------------------------------
-// buildPartyRockPrompt
-// Constructs the evaluation prompt for Gemini with all 5 analysis
-// methods described in the design document:
-//   1. Semantic similarity   → Creativity & Originality
-//   2. NLP extraction        → Problem-Solution Fit
-//   3. Widget complexity     → Effective Use of PartyRock Features
-//   4. Description completeness → User Experience & Presentation
-//   5. Keyword/topic analysis   → Impact & Scalability
-//
-// This is the pre-existing `buildPrompt`, renamed and otherwise untouched.
-// Its output must stay byte-for-byte identical to what PartyRock projects
-// were scored against before HTML support existed — Property 25 (P25-e/f in
-// `__tests__/services/backward-compatibility.property.test.ts`) compares the
-// prompt for legacy metadata against this one directly.
-// Requirements: 4.4, 8.2, 8.3
-// -----------------------------------------------------------------------
-function buildPartyRockPrompt(
-  metadata: ProjectMetadata,
-  parameter: ScoringParameter,
-  contextProjects: ProjectMetadata[],
-): string {
-  const widgetList = metadata.widgets.map((w) => `${w.type} (${w.label})`).join(', ') || 'none'
-  const promptList = metadata.prompts.join(' | ') || 'none'
-  const sourceCodeSection = metadata.sourceCode
-    ? metadata.sourceCode.slice(0, 20000)
-    : '(no source code provided)'
-
-  const contextSection =
-    contextProjects.length > 0
-      ? contextProjects
-        .map(
-          (p) =>
-            `- Title: ${p.title ?? '(no title)'} | Widgets: ${p.widgetCount} | Description: ${p.description ?? '(no description)'}`,
-        )
-        .join('\n')
-      : '(no other projects in this category)'
-
-  return `
-You are an AI judge evaluating applications built on AWS PartyRock.
-
-## Application to Evaluate
-Title: ${metadata.title ?? '(no title)'}
-Description: ${metadata.description ?? '(no description)'}
-Widgets used: ${widgetList}
-Widget count: ${metadata.widgetCount}
-Prompts detected: ${promptList}
-
-## Source Code
-${sourceCodeSection}
-
-## Evaluation Parameter
-Name: ${parameter.name}
-Description: ${parameter.description ?? '(no description)'}
-Score range: ${parameter.minScore} to ${parameter.maxScore}
-
-## Other Projects in This Category (for comparison)
-${contextSection}
-
-## Analysis Instructions
-Apply the analysis method most appropriate for the parameter being evaluated. The application's SOURCE CODE (shown above) is the primary evidence — use the title, description, widgets and prompts as supporting context only.
-
-1. **Code Quality & Structure** (if relevant to the parameter): Assess the source code for clarity, organization, and correct use of PartyRock/AWS widget configuration.
-
-2. **Semantic Similarity** (Creativity & Originality): Compare this application's concept, source code structure, and prompts against the other projects listed above. A more unique or novel implementation should score higher.
-
-3. **NLP Extraction** (Problem-Solution Fit): Extract the problem being solved and the proposed solution from the title, description, and source code. Rate how clearly and directly the application addresses a real user problem.
-
-4. **Widget Complexity & Diversity** (Effective Use of PartyRock Features): Evaluate the number, variety, and sophistication of widgets configured in the source code. Applications that use multiple widget types in creative ways should score higher.
-
-5. **Description Completeness & Clarity** (User Experience & Presentation): Assess whether the title, description, and source code comments clearly communicate the purpose, target audience, and usage of the application.
-
-6. **Keyword & Topic Analysis** (Impact & Scalability): Identify keywords and topics related to real-world impact, scalability, and broad applicability from the description, prompts, and source code. Applications addressing widespread problems score higher.
-
-## Output Format
-Respond with a valid JSON object only — no markdown, no code blocks, no additional text:
-{"score": <number between ${parameter.minScore} and ${parameter.maxScore}>, "reasoning": "<concise explanation of the score, 2–4 sentences>"}
-`.trim()
-}
-
-// -----------------------------------------------------------------------
-// buildHtmlPrompt
+// buildPrompt
 //
 // Prompt for web projects, where the evidence is the page markup rather than
 // a PartyRock app definition. Two evidence blocks are handed to the model,
@@ -181,7 +100,7 @@ function renderMarkupExcerpt(
     : ''
 }
 
-function buildHtmlPrompt(
+function buildPrompt(
   metadata: ProjectMetadata,
   parameter: ScoringParameter,
   contextProjects: ProjectMetadata[],
@@ -256,27 +175,9 @@ Respond with a valid JSON object only — no markdown, no code blocks, no additi
 }
 
 // -----------------------------------------------------------------------
-// buildPrompt
+// Evidence availability
 //
-// Dispatch on project type (Requirement 4.1). The HTML template is selected
-// if and only if the type is `HTML`; every other value — including an absent
-// one, which is what legacy call sites and pre-feature rows produce — falls
-// through to the PartyRock template (Requirement 4.4, Property 25).
-// -----------------------------------------------------------------------
-function buildPrompt(
-  metadata: ProjectMetadata,
-  parameter: ScoringParameter,
-  contextProjects: ProjectMetadata[],
-): string {
-  return metadata.projectType === 'HTML'
-    ? buildHtmlPrompt(metadata, parameter, contextProjects)
-    : buildPartyRockPrompt(metadata, parameter, contextProjects)
-}
-
-// -----------------------------------------------------------------------
-// Evidence availability (Requirement 4.6)
-//
-// An HTML project is judged from its markup. If none of the three places that
+// A project is judged from its markup. If none of the three places that
 // markup can live holds anything usable, there is nothing to send to Gemini and
 // calling it would only produce a confidently invented score.
 // -----------------------------------------------------------------------
@@ -493,50 +394,36 @@ export class ScorerService {
      */
     const crawledStructure = (project.metadata?.structure ?? null) as unknown as HtmlStructure | null
 
-    if (project.projectType === ProjectType.HTML) {
-      const hasEvidence =
-        hasUsableText(project.sourceCode) ||
-        crawledStructure !== null ||
-        hasUsableText(project.metadata?.rawHtml)
+    const hasEvidence =
+      hasUsableText(project.sourceCode) ||
+      crawledStructure !== null ||
+      hasUsableText(project.metadata?.rawHtml)
 
-      if (!hasEvidence) {
-        console.error(`[Scorer] ${HTML_NO_EVIDENCE_MESSAGE} (project ${projectId})`)
+    if (!hasEvidence) {
+      console.error(`[Scorer] ${HTML_NO_EVIDENCE_MESSAGE} (project ${projectId})`)
 
-        // Only `scoreStatus` is written. `finalScore` is left as it stands —
-        // it can carry a jury-derived value, and nothing was scored here that
-        // would justify clearing it.
-        await db.project.update({
-          where: { id: projectId },
-          data: { scoreStatus: 'FAILED' },
-        })
-        return
-      }
+      // Only `scoreStatus` is written. `finalScore` is left as it stands —
+      // it can carry a jury-derived value, and nothing was scored here that
+      // would justify clearing it.
+      await db.project.update({
+        where: { id: projectId },
+        data: { scoreStatus: 'FAILED' },
+      })
+      return
     }
 
     /**
-     * Requirement 3.6 — the crawl-computed structure wins whenever it exists;
-     * `sourceCode` is only parsed to fill a gap, never to overwrite. The two are
-     * not in competition: the crawler already refuses to overwrite pasted
-     * Source Code, so a row that has both was populated from that same markup.
-     *
-     * HTML only. A PARTYROCK project's `sourceCode` is a serialised capture, not
-     * markup, and `buildPartyRockPrompt` never reads `structure` — parsing it
-     * would burn cycles to produce metrics about a JSON blob that nothing looks
-     * at. (P25-e compares PartyRock prompts byte-for-byte; keeping this branch
-     * out of that path is what keeps that true by construction.)
+     * The crawl-computed structure wins whenever it exists; `sourceCode` is
+     * only parsed to fill a gap, never to overwrite. The two are not in
+     * competition: the crawler already refuses to overwrite pasted Source
+     * Code, so a row that has both was populated from that same markup.
      */
     const structure =
-      crawledStructure ??
-      (project.projectType === ProjectType.HTML
-        ? deriveStructureFromSourceCode(project.sourceCode)
-        : null)
+      crawledStructure ?? deriveStructureFromSourceCode(project.sourceCode)
 
     // Build this project's metadata for the scorer. Title/description/widgets
     // come from the (optional, unused-by-default) crawl metadata; sourceCode is
     // the participant-pasted code, which is now the primary scoring input.
-    // `url`, `projectType` and `structure` are only read by the HTML prompt —
-    // the PartyRock prompt ignores all three (pinned by P25-e/f and the
-    // dispatch unit tests), so passing them cannot change existing prompts.
     const metadata: ProjectMetadata = project.metadata
       ? {
         title: project.metadata.title,
@@ -546,7 +433,6 @@ export class ScorerService {
         widgetCount: project.metadata.widgetCount,
         sourceCode: project.sourceCode,
         url: project.url,
-        projectType: project.projectType,
         structure,
       }
       : {
@@ -557,9 +443,8 @@ export class ScorerService {
         widgetCount: 0,
         sourceCode: project.sourceCode,
         url: project.url,
-        projectType: project.projectType,
         // Not hardcoded `null`: with no CrawlMetadata row there is certainly no
-        // crawled structure, but `sourceCode` may still supply one (Req 3.6).
+        // crawled structure, but `sourceCode` may still supply one.
         structure,
       }
 

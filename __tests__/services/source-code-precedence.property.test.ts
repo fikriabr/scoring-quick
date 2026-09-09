@@ -561,35 +561,4 @@ describe('Property 26: Pasted Source Code Takes Precedence Over Fetched Markup',
     )
   })
 
-  // -------------------------------------------------------------------------
-  // PARTYROCK: the column is not this crawler's business at all
-  // -------------------------------------------------------------------------
-
-  it('P26-f — a PARTYROCK crawl SHALL never write sourceCode, empty column or not [**Validates: Requirements 3.6**]', async () => {
-    await fc.assert(
-      fc.asyncProperty(
-        fc.oneof(emptySourceCodeArbitrary, nonEmptySourceCodeArbitrary),
-        markupArbitrary,
-        async (initial, markup) => {
-          resetMocks(
-            buildProjectRecord({
-              projectType: 'PARTYROCK',
-              url: 'https://partyrock.aws/app/test-app',
-              sourceCode: initial,
-            }),
-          )
-          serveFetchBodies([markup])
-
-          await CrawlerService.triggerCrawl(PROJECT_ID)
-
-          expect(findProjectUpdateData('SUCCESS')).not.toBeNull()
-          // The PartyRock strategy produces no `sourceCode` candidate, so the
-          // Capture Pipeline's value — present or not — is never disturbed.
-          expectNoSourceCodeWrite()
-          expect(projectRow.sourceCode).toBe(initial)
-        },
-      ),
-      { numRuns: 200 },
-    )
-  })
 })

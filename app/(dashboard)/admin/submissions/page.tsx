@@ -24,12 +24,9 @@ export default async function AdminSubmissionsPage() {
     },
   })
 
-  // The query above has no explicit `select`, so every Project column —
-  // including projectType — is already loaded here. Requirements: 1.7
   const serializedProjects = projects.map((p) => ({
     id: p.id,
     url: p.url,
-    projectType: p.projectType,
     participantName: p.participantName,
     teamName: p.teamName,
     crawlStatus: p.crawlStatus,

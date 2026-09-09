@@ -3,8 +3,8 @@
 // Single source of truth for the `Project.sourceCode` length rule.
 //
 // This lived in `lib/validators/schemas.ts`, which cannot be imported from a
-// client component: `schemas.ts` imports `{ ProjectType, ScoringMode }` from
-// `@prisma/client` as *values* (they are used with `z.nativeEnum`), so pulling
+// client component: `schemas.ts` imports `{ ScoringMode }` from
+// `@prisma/client` as a *value* (used with `z.nativeEnum`), so pulling
 // the constant from there would drag the Prisma runtime into the browser
 // bundle. This module therefore stays free of any server-only dependency — no
 // `@prisma/client`, no `zod`, no `@/lib/db`, no Node built-ins — so the zod

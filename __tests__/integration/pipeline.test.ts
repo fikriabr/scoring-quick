@@ -216,15 +216,7 @@ async function flushAsyncScoring(): Promise<void> {
 // Test Data Factories
 // ---------------------------------------------------------------------------
 
-/**
- * A Project row.
- *
- * `projectType` is deliberately absent from the defaults rather than set to
- * `'PARTYROCK'`: a row written before this feature existed carries no opinion
- * of its own, and both services must read that as PartyRock (Requirement 8.1).
- * Leaving the key out is what keeps the PartyRock cases below exercising that
- * exact path. HTML cases pass `projectType: 'HTML'` through `overrides`.
- */
+/** A Project row. */
 function createFakeProject(overrides: Record<string, unknown> = {}) {
   return {
     id: 'project-1',
@@ -315,17 +307,14 @@ function createFakeProjectWithCategory(
     metadata: {
       id: 'metadata-1',
       projectId: 'project-1',
-      title: 'My PartyRock App',
-      description: 'A creative AI application',
-      widgets: [
-        { type: 'text-input', label: 'Topic' },
-        { type: 'ai', label: 'Generator' },
-      ],
-      prompts: ['Generate a story about {{topic}}'],
-      widgetCount: 2,
-      rawHtml: null,
-      // Only the HTML crawl writes this column; a PartyRock row leaves it null,
-      // which is what `triggerScoring` reads as "no structure".
+      title: 'My Test App',
+      description: 'A creative test application',
+      widgets: [],
+      prompts: [],
+      widgetCount: 0,
+      // Non-null by default so `triggerScoring`'s evidence check passes without
+      // every test having to supply its own markup via `metadataOverrides`.
+      rawHtml: '<html><head><title>My Test App</title></head><body><main><h1>Test</h1></main></body></html>',
       structure: null as unknown,
       crawledAt: new Date('2024-01-01'),
       ...metadataOverrides,
@@ -593,52 +582,6 @@ describe('Pipeline Integration: Scoring Partial Failure', () => {
 })
 
 // ---------------------------------------------------------------------------
-// Test 4: PARTYROCK prompt regression
-//
-// The prompt template is now chosen per project type, so the PartyRock path
-// needs a guard of its own: a project that carries no `projectType` at all —
-// which is every row written before this feature — must still be judged by the
-// PartyRock template, with no HTML section anywhere in sight.
-// Requirements: 4.4, 8.2 (html-project-scoring)
-// ---------------------------------------------------------------------------
-
-describe('Pipeline Integration: PARTYROCK Prompt Regression', () => {
-  it('still sends the PartyRock prompt for a project with no projectType', async () => {
-    const projectWithCategory = createFakeProjectWithCategory()
-    mockProjectFindUniqueOrThrow.mockResolvedValueOnce(projectWithCategory as never)
-    mockCrawlMetadataFindMany.mockResolvedValueOnce([])
-    mockAIScoreUpsert.mockResolvedValue({} as never)
-    mockProjectUpdate.mockResolvedValue({} as never)
-
-    mockGenerateContent
-      .mockResolvedValueOnce(createGeminiResponse(85, 'Very creative'))
-      .mockResolvedValueOnce(createGeminiResponse(78, 'Good problem-solution fit'))
-      .mockResolvedValueOnce(createGeminiResponse(90, 'Excellent UX'))
-
-    await ScorerService.triggerScoring('project-1')
-
-    const prompts = promptsSentToGemini()
-    expect(prompts).toHaveLength(3)
-    for (const prompt of prompts) {
-      expect(prompt).toContain(
-        'You are an AI judge evaluating applications built on AWS PartyRock',
-      )
-      // Widget evidence is PartyRock-only and is still carried through.
-      expect(prompt).toContain('Widget count: 2')
-      expect(prompt).toContain('text-input (Topic)')
-      expect(prompt).not.toContain('## HTML Structure')
-    }
-
-    // ...and the rest of the pipeline behaves exactly as before.
-    expect(mockAIScoreUpsert).toHaveBeenCalledTimes(3)
-    const finalUpdate = findProjectUpdateData('scoreStatus', 'SUCCESS')
-    expect(finalUpdate).not.toBeNull()
-    // (85×30 + 78×40 + 90×30) / 100
-    expect(finalUpdate?.finalScore as number).toBeCloseTo(83.7, 1)
-  })
-})
-
-// ---------------------------------------------------------------------------
 // Test 5: HTML Happy Path
 //
 // The whole HTML route, in the order `POST /api/submissions` walks it:
@@ -654,25 +597,22 @@ describe('Pipeline Integration: HTML Happy Path', () => {
     // --- Phase 1: Submit an HTML project ---
     mockProjectFindFirst.mockResolvedValueOnce(null) // no duplicate
     mockProjectCreate.mockResolvedValueOnce(
-      createFakeProject({ projectType: 'HTML', url: HTML_PROJECT_URL }) as never,
+      createFakeProject({ url: HTML_PROJECT_URL }) as never,
     )
 
     const result = await submitProject({
       url: HTML_PROJECT_URL,
       participantName: 'Rani Puspita',
       categoryId: 'clxxxxxxxxxxxxxxxxxx001',
-      projectType: 'HTML',
     })
 
-    expect(result.projectType).toBe('HTML')
     expect(result.crawlStatus).toBe('PENDING')
     expect(result.scoreStatus).toBe('PENDING')
-    // A non-PartyRock hostname is accepted because the type says HTML.
+    // Any hostname is accepted.
     expect(mockProjectCreate).toHaveBeenCalledWith(
       expect.objectContaining({
         data: expect.objectContaining({
           url: HTML_PROJECT_URL,
-          projectType: 'HTML',
           crawlStatus: 'PENDING',
           scoreStatus: 'PENDING',
         }),
@@ -682,7 +622,6 @@ describe('Pipeline Integration: HTML Happy Path', () => {
     // --- Phase 2: Crawl ---
     mockProjectFindUniqueOrThrow.mockResolvedValueOnce(
       createFakeProject({
-        projectType: 'HTML',
         url: HTML_PROJECT_URL,
         sourceCode: null, // empty, so the fetched markup may fill it
         category: { id: 'category-1' },
@@ -699,7 +638,6 @@ describe('Pipeline Integration: HTML Happy Path', () => {
     mockProjectFindUniqueOrThrow.mockResolvedValueOnce(
       createFakeProjectWithCategory(
         {
-          projectType: 'HTML',
           url: HTML_PROJECT_URL,
           sourceCode: HTML_PROJECT_DOC,
         },

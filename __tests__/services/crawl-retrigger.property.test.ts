@@ -18,7 +18,8 @@
 
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import * as fc from 'fast-check'
-import type { PartyRockMetadata, WidgetInfo } from '@/types'
+import type { ProjectMetadata, WidgetInfo } from '@/types'
+import type { CrawlOutcome } from '@/lib/services/crawler.service'
 
 // ---------------------------------------------------------------------------
 // Mock modules BEFORE importing the service under test.
@@ -93,8 +94,8 @@ const promptsArb = fc.array(
   { minLength: 0, maxLength: 5 },
 )
 
-/** Valid PartyRockMetadata with consistent widgetCount */
-const metadataArb: fc.Arbitrary<PartyRockMetadata> = fc
+/** Valid ProjectMetadata with consistent widgetCount */
+const metadataArb: fc.Arbitrary<ProjectMetadata> = fc
   .record({
     title: titleArb,
     description: descriptionArb,
@@ -183,7 +184,7 @@ describe('Property 9: Crawl Re-trigger Overwrites Previous Data', () => {
           mockDeleteMany.mockResolvedValue({ count: 1 } as never)
           mockProjectUpdate.mockResolvedValue({} as never)
           mockCrawlMetadataUpsert.mockResolvedValue({} as never)
-          crawlSpy.mockResolvedValue(newMetadata)
+          crawlSpy.mockResolvedValue(newMetadata as unknown as CrawlOutcome)
 
           await CrawlerService.retriggerCrawl(projectId)
 
@@ -218,7 +219,7 @@ describe('Property 9: Crawl Re-trigger Overwrites Previous Data', () => {
           mockDeleteMany.mockResolvedValue({ count: 1 } as never)
           mockProjectUpdate.mockResolvedValue({} as never)
           mockCrawlMetadataUpsert.mockResolvedValue({} as never)
-          crawlSpy.mockResolvedValue(newMetadata)
+          crawlSpy.mockResolvedValue(newMetadata as unknown as CrawlOutcome)
 
           await CrawlerService.retriggerCrawl(projectId)
 
@@ -261,7 +262,7 @@ describe('Property 9: Crawl Re-trigger Overwrites Previous Data', () => {
           mockDeleteMany.mockResolvedValue({ count: 1 } as never)
           mockProjectUpdate.mockResolvedValue({} as never)
           mockCrawlMetadataUpsert.mockResolvedValue({} as never)
-          crawlSpy.mockResolvedValue(newMetadata)
+          crawlSpy.mockResolvedValue(newMetadata as unknown as CrawlOutcome)
 
           await CrawlerService.retriggerCrawl(projectId)
 
@@ -323,7 +324,7 @@ describe('Property 9: Crawl Re-trigger — deterministic edge cases', () => {
       'https://partyrock.aws/app/my-app',
       'cat_001',
     )
-    const newMetadata: PartyRockMetadata = {
+    const newMetadata: ProjectMetadata = {
       title: 'Updated App',
       description: 'Fresh description',
       widgets: [{ type: 'ai', label: 'AI Widget' }],
@@ -335,7 +336,7 @@ describe('Property 9: Crawl Re-trigger — deterministic edge cases', () => {
     mockDeleteMany.mockResolvedValue({ count: 1 } as never)
     mockProjectUpdate.mockResolvedValue({} as never)
     mockCrawlMetadataUpsert.mockResolvedValue({} as never)
-    crawlSpy.mockResolvedValue(newMetadata)
+    crawlSpy.mockResolvedValue(newMetadata as unknown as CrawlOutcome)
 
     await CrawlerService.retriggerCrawl(projectId)
 
@@ -363,12 +364,15 @@ describe('Property 9: Crawl Re-trigger — deterministic edge cases', () => {
       'https://partyrock.aws/app/success-app',
       'cat_002',
     )
-    const metadata: PartyRockMetadata = {
+    const metadata: CrawlOutcome = {
       title: 'Success App',
       description: null,
       widgets: [],
       prompts: [],
       widgetCount: 0,
+      rawHtml: '<html><body>Success App</body></html>',
+      structure: null,
+      sourceCode: '<html><body>Success App</body></html>',
     }
 
     mockProjectFindUniqueOrThrow.mockResolvedValue(project as never)
@@ -424,7 +428,7 @@ describe('Property 9: Crawl Re-trigger — deterministic edge cases', () => {
       'https://partyrock.aws/app/order-app',
       'cat_004',
     )
-    const metadata: PartyRockMetadata = {
+    const metadata: ProjectMetadata = {
       title: 'Order Test',
       description: 'Testing call order',
       widgets: [{ type: 'text', label: 'Input' }],
@@ -454,7 +458,7 @@ describe('Property 9: Crawl Re-trigger — deterministic edge cases', () => {
       callOrder.push('upsertMetadata')
       return {}
     }) as never)
-    crawlSpy.mockResolvedValue(metadata)
+    crawlSpy.mockResolvedValue(metadata as unknown as CrawlOutcome)
 
     await CrawlerService.retriggerCrawl(projectId)
 

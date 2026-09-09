@@ -2,13 +2,12 @@
 
 import type {
   CrawlStatus,
-  ProjectType,
   ScoreStatus,
   ScoringMode,
 } from '@prisma/client'
 
 // -----------------------------------------------------------------------
-// PartyRock Crawler Types
+// Crawler Types
 // -----------------------------------------------------------------------
 
 export interface WidgetInfo {
@@ -77,8 +76,7 @@ export interface HtmlStructure {
 // -----------------------------------------------------------------------
 
 /**
- * Tipe input scorer untuk semua tipe project.
- * Field PartyRock dipertahankan agar jalur existing tidak berubah.
+ * Tipe input scorer untuk project.
  */
 export interface ProjectMetadata {
   title: string | null
@@ -87,21 +85,10 @@ export interface ProjectMetadata {
   prompts: string[]
   widgetCount: number
   sourceCode?: string | null
-  projectType?: ProjectType
   structure?: HtmlStructure | null
-  /**
-   * URL project. Opsional dan hanya dipakai oleh prompt HTML — prompt
-   * PartyRock tidak pernah menyertakannya, sehingga field ini tidak bisa
-   * mengubah prompt project existing (Property 25).
-   */
+  /** URL project, dipakai oleh prompt sebagai context tambahan. */
   url?: string | null
 }
-
-/**
- * Alias backward-compatible. Call site existing tetap memakai nama ini
- * tanpa perlu diubah serentak.
- */
-export type PartyRockMetadata = ProjectMetadata
 
 // -----------------------------------------------------------------------
 // Scoring Types

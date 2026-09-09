@@ -12,20 +12,21 @@
  * Two testing strategies are used:
  *
  * 1. **Pure structural invariant** (no mocking):
- *    Given any valid `PartyRockMetadata` object constructed directly, the
+ *    Given any valid `ProjectMetadata` object constructed directly, the
  *    `widgetCount` field MUST equal `widgets.length`. This tests the invariant
  *    at the data-structure level, independent of I/O.
  *
  * 2. **Mocked CrawlerService** (simulates real crawl results):
  *    `CrawlerService.crawl` is mocked to return arbitrary but structurally
- *    valid `PartyRockMetadata` values. The caller's assertions on the returned
+ *    valid `ProjectMetadata` values. The caller's assertions on the returned
  *    object are verified — title is a string, widgets is an array, prompts is
  *    an array, and widgetCount === widgets.length.
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import * as fc from 'fast-check'
-import type { PartyRockMetadata, WidgetInfo } from '@/types'
+import type { ProjectMetadata, WidgetInfo } from '@/types'
+import type { CrawlOutcome } from '@/lib/services/crawler.service'
 
 // ---------------------------------------------------------------------------
 // Mock CrawlerService BEFORE importing it so that the module receives the
@@ -85,10 +86,10 @@ const promptsArb: fc.Arbitrary<string[]> = fc.array(
 )
 
 /**
- * Generates a complete, structurally valid `PartyRockMetadata` object where
+ * Generates a complete, structurally valid `ProjectMetadata` object where
  * `widgetCount` is derived correctly from `widgets.length`.
  */
-const validMetadataArb: fc.Arbitrary<PartyRockMetadata> = fc
+const validMetadataArb: fc.Arbitrary<ProjectMetadata> = fc
   .record({
     title: titleArb,
     description: descriptionArb,
@@ -104,11 +105,11 @@ const validMetadataArb: fc.Arbitrary<PartyRockMetadata> = fc
   }))
 
 /**
- * Generates a `PartyRockMetadata` where `widgetCount` may be intentionally
+ * Generates a `ProjectMetadata` where `widgetCount` may be intentionally
  * incorrect (to verify that inconsistent objects fail the invariant check).
  * Used only in the invariant violation test.
  */
-const inconsistentMetadataArb: fc.Arbitrary<PartyRockMetadata> = fc
+const inconsistentMetadataArb: fc.Arbitrary<ProjectMetadata> = fc
   .record({
     title: titleArb,
     description: descriptionArb,
@@ -123,13 +124,13 @@ const inconsistentMetadataArb: fc.Arbitrary<PartyRockMetadata> = fc
 // ---------------------------------------------------------------------------
 
 /**
- * Checks that a `PartyRockMetadata` object satisfies Property 8 invariants:
+ * Checks that a `ProjectMetadata` object satisfies Property 8 invariants:
  *  - title is a non-null string
  *  - widgets is an array
  *  - prompts is an array
  *  - widgetCount === widgets.length
  */
-function assertMetadataInvariants(metadata: PartyRockMetadata): void {
+function assertMetadataInvariants(metadata: ProjectMetadata): void {
   // title is a string (not undefined, not null)
   expect(typeof metadata.title).toBe('string')
 
@@ -201,7 +202,7 @@ describe('Property 8 (pure): widgetCount === widgets.length invariant', () => {
           prompts: promptsArb,
         }),
         ({ title, description, prompts }) => {
-          const metadata: PartyRockMetadata = {
+          const metadata: ProjectMetadata = {
             title,
             description,
             widgets: [],
@@ -249,7 +250,7 @@ describe('Property 8 (mocked): CrawlerService.crawl returns complete metadata', 
   it('P8-mock-a — crawl result SHALL have string title, widget array, prompt array, and consistent widgetCount [**Validates: Requirements 4.2, 4.5**]', async () => {
     await fc.assert(
       fc.asyncProperty(validMetadataArb, async (metadata) => {
-        vi.mocked(CrawlerService.crawl).mockResolvedValueOnce(metadata)
+        vi.mocked(CrawlerService.crawl).mockResolvedValueOnce(metadata as unknown as CrawlOutcome)
 
         const result = await CrawlerService.crawl(
           'https://partyrock.aws/app/test-app',
@@ -275,7 +276,7 @@ describe('Property 8 (mocked): CrawlerService.crawl returns complete metadata', 
           .map((slug) => `https://partyrock.aws/app/${slug}`),
         validMetadataArb,
         async (url, metadata) => {
-          vi.mocked(CrawlerService.crawl).mockResolvedValueOnce(metadata)
+          vi.mocked(CrawlerService.crawl).mockResolvedValueOnce(metadata as unknown as CrawlOutcome)
 
           await CrawlerService.crawl(url)
 
@@ -303,14 +304,14 @@ describe('Property 8 (mocked): CrawlerService.crawl returns complete metadata', 
           prompts: promptsArb,
         }),
         async ({ title, description, prompts }) => {
-          const metadata: PartyRockMetadata = {
+          const metadata: ProjectMetadata = {
             title,
             description,
             widgets: [],
             prompts,
             widgetCount: 0,
           }
-          vi.mocked(CrawlerService.crawl).mockResolvedValueOnce(metadata)
+          vi.mocked(CrawlerService.crawl).mockResolvedValueOnce(metadata as unknown as CrawlOutcome)
 
           const result = await CrawlerService.crawl(
             'https://partyrock.aws/app/empty',
@@ -337,7 +338,7 @@ describe('Property 8 (mocked): CrawlerService.crawl returns complete metadata', 
   it('P8-mock-d — widgetCount SHALL always reflect the actual number of widgets returned [**Validates: Requirements 4.2, 4.5**]', async () => {
     await fc.assert(
       fc.asyncProperty(validMetadataArb, async (metadata) => {
-        vi.mocked(CrawlerService.crawl).mockResolvedValueOnce(metadata)
+        vi.mocked(CrawlerService.crawl).mockResolvedValueOnce(metadata as unknown as CrawlOutcome)
 
         const result = await CrawlerService.crawl(
           'https://partyrock.aws/app/any',
@@ -367,7 +368,7 @@ describe('Property 8 (mocked): CrawlerService.crawl returns complete metadata', 
       fc.asyncProperty(
         validMetadataArb.filter((m) => m.prompts.length > 0),
         async (metadata) => {
-          vi.mocked(CrawlerService.crawl).mockResolvedValueOnce(metadata)
+          vi.mocked(CrawlerService.crawl).mockResolvedValueOnce(metadata as unknown as CrawlOutcome)
 
           const result = await CrawlerService.crawl(
             'https://partyrock.aws/app/prompts-test',
@@ -392,7 +393,7 @@ describe('Property 8 (mocked): CrawlerService.crawl returns complete metadata', 
 
 describe('Property 8: Crawl Metadata Completeness — deterministic edge cases', () => {
   it('metadata with 0 widgets satisfies all invariants', () => {
-    const metadata: PartyRockMetadata = {
+    const metadata: ProjectMetadata = {
       title: 'My App',
       description: 'A test application',
       widgets: [],
@@ -403,7 +404,7 @@ describe('Property 8: Crawl Metadata Completeness — deterministic edge cases',
   })
 
   it('metadata with multiple widgets has matching widgetCount', () => {
-    const metadata: PartyRockMetadata = {
+    const metadata: ProjectMetadata = {
       title: 'Complex App',
       description: null,
       widgets: [
@@ -419,7 +420,7 @@ describe('Property 8: Crawl Metadata Completeness — deterministic edge cases',
   })
 
   it('null description is allowed — title must still be a string', () => {
-    const metadata: PartyRockMetadata = {
+    const metadata: ProjectMetadata = {
       title: 'Title Only App',
       description: null,
       widgets: [{ type: 'ai', label: '' }],
@@ -436,7 +437,7 @@ describe('Property 8: Crawl Metadata Completeness — deterministic edge cases',
       type: `widget-type-${i}`,
       label: `Widget ${i}`,
     }))
-    const metadata: PartyRockMetadata = {
+    const metadata: ProjectMetadata = {
       title: 'Many Widgets App',
       description: 'A complex app',
       widgets,
@@ -448,7 +449,7 @@ describe('Property 8: Crawl Metadata Completeness — deterministic edge cases',
   })
 
   it('mocked crawl result satisfies all Property 8 invariants', async () => {
-    const expected: PartyRockMetadata = {
+    const expected: ProjectMetadata = {
       title: 'PartyRock App',
       description: 'Creative AI application',
       widgets: [
@@ -458,7 +459,7 @@ describe('Property 8: Crawl Metadata Completeness — deterministic edge cases',
       prompts: ['Write a story about {{topic}}'],
       widgetCount: 2,
     }
-    vi.mocked(CrawlerService.crawl).mockResolvedValueOnce(expected)
+    vi.mocked(CrawlerService.crawl).mockResolvedValueOnce(expected as unknown as CrawlOutcome)
 
     const result = await CrawlerService.crawl(
       'https://partyrock.aws/app/story-gen',
@@ -472,7 +473,7 @@ describe('Property 8: Crawl Metadata Completeness — deterministic edge cases',
   })
 
   it('widgetCount discrepancy is detectable — 3 widgets but count says 2 fails invariant', () => {
-    const metadata: PartyRockMetadata = {
+    const metadata: ProjectMetadata = {
       title: 'App',
       description: null,
       widgets: [

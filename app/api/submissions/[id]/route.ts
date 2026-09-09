@@ -29,9 +29,7 @@ type RouteContext = { params: Promise<{ id: string }> }
 // for any reason leaves both `sourceCode` and `scoreStatus` exactly as they
 // were. Nothing here short-circuits into a partial update.
 //
-// Applies to both project types. Requirement 5.1 puts the editor on the detail
-// page of every project; only the Capture Pipeline panel is PartyRock-specific
-// (Requirement 5.5), and that lives in the UI, not here.
+// The editor is available on the detail page of every project.
 // -----------------------------------------------------------------------
 export async function PATCH(
   request: NextRequest,

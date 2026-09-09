@@ -5,8 +5,8 @@ import type { Metadata } from 'next'
 import './globals.css'
 
 export const metadata: Metadata = {
-  title: 'Scoring Project by PindAI',
-  description: 'Web-based project judging system for various platforms',
+  title: 'Scoring Quick',
+  description: 'Web-based judging system for HTML web projects',
 }
 
 export default function RootLayout({

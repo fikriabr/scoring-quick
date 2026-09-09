@@ -34,11 +34,6 @@ enum ScoringMode {
   MANUAL
 }
 
-enum ProjectType {
-  PARTYROCK
-  HTML
-}
-
 model User {
   id            String   @id @default(cuid())
   name          String
@@ -118,7 +113,6 @@ model Project {
   url             String
   participantName String
   teamName        String?
-  projectType     ProjectType @default(PARTYROCK)
   sourceCode      String?
   crawlStatus     CrawlStatus @default(PENDING)
   crawlError      String?

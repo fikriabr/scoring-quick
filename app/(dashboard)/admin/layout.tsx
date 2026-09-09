@@ -33,7 +33,7 @@ export default async function AdminLayout({
           <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-blue-600 text-sm text-white">
             🎯
           </div>
-          <span className="text-lg font-bold text-white">PindAI</span>
+          <span className="text-lg font-bold text-white">Scoring Quick</span>
         </div>
 
         {/* Navigation */}
@@ -94,7 +94,7 @@ export default async function AdminLayout({
         <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-blue-600 text-sm text-white">
           🎯
         </div>
-        <span className="text-lg font-bold text-gray-900">PindAI</span>
+        <span className="text-lg font-bold text-gray-900">Scoring Quick</span>
         <div className="ml-auto">
           <SignOutButton variant="compact" />
         </div>
