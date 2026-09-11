@@ -1,1 +1,22 @@
 @import "tailwindcss";
+
+/* Indeterminate progress bar used by ProcessingBanner while a project's
+   crawl/AI scoring pipeline is still running — there is no real percentage
+   to report, so the highlight sweeps back and forth instead. */
+@keyframes progress-indeterminate {
+  0% {
+    left: -40%;
+    width: 40%;
+  }
+  50% {
+    width: 60%;
+  }
+  100% {
+    left: 100%;
+    width: 40%;
+  }
+}
+
+.animate-progress-indeterminate {
+  animation: progress-indeterminate 1.6s ease-in-out infinite;
+}

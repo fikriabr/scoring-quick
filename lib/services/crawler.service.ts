@@ -14,6 +14,22 @@ import { Prisma } from '@prisma/client'
 import type { HtmlStructure, WidgetInfo } from '@/types'
 
 const FETCH_TIMEOUT_MS = 15_000
+
+/**
+ * Hard ceiling on the whole crawl pipeline (project lookup, the HTTP fetch,
+ * and persisting `CrawlMetadata`) — not just the fetch itself.
+ *
+ * `FETCH_TIMEOUT_MS` already aborts a slow page fetch well under this, so in
+ * the common case this ceiling never fires. It exists for everything the
+ * per-fetch timeout can't see: a `findUniqueOrThrow`/`update` call to Neon
+ * that hangs, or any other step between "status set to PROCESSING" and
+ * "status written back" that never returns. Without it, a stuck project sits
+ * at PROCESSING forever with no error and no way for the admin to tell it
+ * apart from one that is genuinely still running.
+ */
+const CRAWL_TIMEOUT_MS = 60_000
+const CRAWL_TIMEOUT_MESSAGE = `Crawl timed out after ${CRAWL_TIMEOUT_MS / 1000} seconds`
+
 const USER_AGENT =
   'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
 
@@ -85,25 +101,82 @@ export class CrawlerService {
    * lives.
    */
   static async triggerCrawl(projectId: string): Promise<void> {
-    const project = await db.project.findUniqueOrThrow({
-      where: { id: projectId },
-      include: { category: true },
+    // Shared with `runCrawlPipeline` so it can tell, right before each of its
+    // own status writes, whether the deadline below has already declared this
+    // crawl FAILED — and if so, back off instead of clobbering that write with
+    // a late success/failure of its own.
+    const guard = { timedOut: false }
+    let timeoutHandle: ReturnType<typeof setTimeout> | undefined
+
+    const timeoutPromise = new Promise<void>((resolve) => {
+      timeoutHandle = setTimeout(() => {
+        guard.timedOut = true
+        resolve()
+      }, CRAWL_TIMEOUT_MS)
     })
 
-    console.log('[Crawler] Starting crawl for project ' + projectId + ' (' + project.url + ')')
+    // Whichever settles first wins. `runCrawlPipeline` isn't cancelled when
+    // the timeout wins — there's no way to abort an in-flight Prisma call —
+    // it keeps running and checks `guard.timedOut` before writing, so a slow
+    // step that eventually finishes doesn't overwrite the FAILED status
+    // written below.
+    await Promise.race([
+      CrawlerService.runCrawlPipeline(projectId, guard),
+      timeoutPromise,
+    ])
 
-    await db.project.update({
-      where: { id: projectId },
-      data: { crawlStatus: 'PROCESSING', crawlError: null },
-    })
+    clearTimeout(timeoutHandle)
 
-    console.log('[Crawler] Status set to PROCESSING')
+    if (guard.timedOut) {
+      console.error(
+        '[Crawler] ' + CRAWL_TIMEOUT_MESSAGE + ' (project ' + projectId + ')',
+      )
+      await db.project
+        .update({
+          where: { id: projectId },
+          data: { crawlStatus: 'FAILED', crawlError: CRAWL_TIMEOUT_MESSAGE },
+        })
+        .catch((err) =>
+          console.error('[Crawler] Failed to record crawl timeout status:', err),
+        )
+    }
+  }
+
+  /**
+   * The actual crawl work, run under the timeout race in `triggerCrawl`.
+   * Every status write checks `guard.timedOut` immediately before writing, so
+   * a step that finishes after the 60s deadline has already declared the
+   * crawl FAILED never overwrites that with a stale result.
+   */
+  private static async runCrawlPipeline(
+    projectId: string,
+    guard: { timedOut: boolean },
+  ): Promise<void> {
+    let project: Awaited<ReturnType<typeof db.project.findUniqueOrThrow>> | undefined
 
     try {
+      project = await db.project.findUniqueOrThrow({
+        where: { id: projectId },
+        include: { category: true },
+      })
+
+      console.log('[Crawler] Starting crawl for project ' + projectId + ' (' + project.url + ')')
+
+      if (guard.timedOut) return
+
+      await db.project.update({
+        where: { id: projectId },
+        data: { crawlStatus: 'PROCESSING', crawlError: null },
+      })
+
+      console.log('[Crawler] Status set to PROCESSING')
+
       console.log('[Crawler] Fetching ' + project.url + '...')
       const metadata = await CrawlerService.crawl(project.url)
 
       console.log('[Crawler] Crawl succeeded - title: ' + metadata.title)
+
+      if (guard.timedOut) return
 
       const widgetsJson = metadata.widgets as unknown as Prisma.InputJsonValue
       const promptsJson = metadata.prompts as unknown as Prisma.InputJsonValue
@@ -156,6 +229,8 @@ export class CrawlerService {
         )
       }
 
+      if (guard.timedOut) return
+
       await db.project.update({
         where: { id: projectId },
         data: {
@@ -167,9 +242,19 @@ export class CrawlerService {
 
       console.log('[Crawler] Metadata saved. Status set to SUCCESS.')
 
+      if (guard.timedOut) return
+
       console.log('[Crawler] Triggering AI scoring for project ' + projectId + '...')
-      ScorerService.triggerScoring(projectId).catch(console.error)
+      // Awaited rather than fire-and-forget: `triggerCrawl` itself typically
+      // runs inside a Next.js `after()` callback (see the API routes that call
+      // it), which keeps the serverless invocation alive only until the
+      // promise passed to `after()` settles. Not awaiting here would let that
+      // promise resolve before scoring finishes, letting the runtime kill the
+      // scoring call exactly as if `after()` had never been used.
+      await ScorerService.triggerScoring(projectId).catch(console.error)
     } catch (error) {
+      if (guard.timedOut) return
+
       const message =
         error instanceof Error ? error.message : 'Unknown crawl error'
       console.error('[Crawler] Crawl FAILED for project ' + projectId + ': ' + message)
@@ -188,12 +273,16 @@ export class CrawlerService {
        * `scoreStatus = FAILED` with an "evidence not available" message is
        * owned by `triggerScoring`.
        */
-      if (hasUsableSourceCode(project.sourceCode)) {
+      if (hasUsableSourceCode(project?.sourceCode)) {
         console.log(
           '[Crawler] Fetch failed but sourceCode is present - continuing to AI scoring for project ' +
           projectId,
         )
-        ScorerService.triggerScoring(projectId).catch(console.error)
+        if (guard.timedOut) return
+        // Awaited for the same reason as the success branch above — this must
+        // finish before `triggerCrawl`'s promise resolves, or an enclosing
+        // `after()` call ends the invocation before scoring completes.
+        await ScorerService.triggerScoring(projectId).catch(console.error)
       }
     }
   }

@@ -8,7 +8,8 @@
 // rows than the collapsed limit.
 
 import Link from 'next/link'
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
+import { useRouter } from 'next/navigation'
 
 // -----------------------------------------------------------------------
 // SerializedProject — shape of a project row as rendered by this table
@@ -30,6 +31,16 @@ export type SerializedProject = {
 // Number of rows shown while collapsed.
 const COLLAPSED_ROWS = 5
 
+const ACTIVE_STATUSES = new Set(['PENDING', 'PROCESSING'])
+const AUTO_REFRESH_INTERVAL_MS = 10_000
+
+function isProjectProcessing(project: SerializedProject): boolean {
+  return (
+    ACTIVE_STATUSES.has(project.crawlStatus) ||
+    ACTIVE_STATUSES.has(project.scoreStatus)
+  )
+}
+
 // -----------------------------------------------------------------------
 // ProjectsTable — card-wrapped, horizontally scrollable table of projects.
 // Used per section so the header markup isn't duplicated.
@@ -39,6 +50,7 @@ export default function ProjectsTable({
 }: {
   projects: SerializedProject[]
 }) {
+  const router = useRouter()
   const [isExpanded, setIsExpanded] = useState(false)
 
   const hasOverflow = projects.length > COLLAPSED_ROWS
@@ -46,8 +58,28 @@ export default function ProjectsTable({
     isExpanded || !hasOverflow ? projects : projects.slice(0, COLLAPSED_ROWS)
   const hiddenCount = projects.length - COLLAPSED_ROWS
 
+  // While any project in this section is still crawling/scoring, refresh the
+  // page's server data every 10s so the status badges below move on their
+  // own instead of looking stuck until a manual reload.
+  const isProcessing = projects.some(isProjectProcessing)
+
+  useEffect(() => {
+    if (!isProcessing) return
+    const id = setInterval(() => router.refresh(), AUTO_REFRESH_INTERVAL_MS)
+    return () => clearInterval(id)
+  }, [isProcessing, router])
+
   return (
     <div className="rounded-xl bg-white shadow-sm ring-1 ring-gray-100 overflow-hidden">
+      {isProcessing && (
+        <div className="flex items-center gap-2 border-b border-blue-100 bg-blue-50 px-4 py-2 text-xs font-medium text-blue-700">
+          <span
+            className="h-1.5 w-1.5 shrink-0 rounded-full bg-blue-500 animate-pulse"
+            aria-hidden="true"
+          />
+          Some submissions are still crawling/scoring — refreshing every 10s.
+        </div>
+      )}
       <div className="overflow-x-auto">
         <table className="w-full text-sm">
           <thead>
@@ -116,8 +148,14 @@ function StatusBadge({ status }: { status: string }) {
 
   return (
     <span
-      className={`inline-flex items-center px-2.5 py-0.5 text-xs font-medium rounded-full ${colorClass}`}
+      className={`inline-flex items-center gap-1 px-2.5 py-0.5 text-xs font-medium rounded-full ${colorClass}`}
     >
+      {status === 'PROCESSING' && (
+        <span
+          className="h-1.5 w-1.5 rounded-full bg-blue-500 animate-pulse"
+          aria-hidden="true"
+        />
+      )}
       {status}
     </span>
   )

@@ -9,6 +9,7 @@ import Link from 'next/link'
 import { db } from '@/lib/db'
 import { RetryButton } from '@/components/SubmissionForm'
 import SourceCodeEditor from '@/components/SourceCodeEditor'
+import ProcessingBanner from '@/components/ProcessingBanner'
 
 interface PageProps {
   params: Promise<{ projectId: string }>
@@ -43,6 +44,14 @@ export default async function ProjectDetailPage({ params }: PageProps) {
         <span>←</span>
         Back to Submissions
       </Link>
+
+      {/* Live status while crawling/scoring is still running */}
+      <ProcessingBanner
+        projectId={project.id}
+        crawlStatus={project.crawlStatus}
+        crawlError={project.crawlError}
+        scoreStatus={project.scoreStatus}
+      />
 
       {/* Header card */}
       <div className="rounded-xl bg-white p-6 shadow-sm ring-1 ring-gray-100">

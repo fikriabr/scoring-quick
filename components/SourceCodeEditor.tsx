@@ -42,10 +42,45 @@ export default function SourceCodeEditor({
     kind: 'ok' | 'error'
     text: string
   } | null>(null)
+  const [fileName, setFileName] = useState<string | null>(null)
 
   const copy = COPY
   const isUnchanged = draft === saved
   const isTooLong = draft.length > MAX_SOURCE_CODE_LENGTH
+
+  async function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0]
+    e.target.value = ''
+    if (!file) return
+
+    setMessage(null)
+
+    if (file.size > MAX_SOURCE_CODE_LENGTH) {
+      setMessage({
+        kind: 'error',
+        text: `File is too large — must not exceed ${MAX_SOURCE_CODE_LENGTH.toLocaleString()} characters.`,
+      })
+      return
+    }
+
+    try {
+      const text = await file.text()
+      if (text.length > MAX_SOURCE_CODE_LENGTH) {
+        setMessage({
+          kind: 'error',
+          text: `File content must not exceed ${MAX_SOURCE_CODE_LENGTH.toLocaleString()} characters.`,
+        })
+        return
+      }
+      setDraft(text)
+      setFileName(file.name)
+    } catch {
+      setMessage({
+        kind: 'error',
+        text: 'Could not read the selected file. Please try again.',
+      })
+    }
+  }
 
   function handleSave() {
     setMessage(null)
@@ -112,9 +147,33 @@ export default function SourceCodeEditor({
         {copy.help} Saving changes re-triggers AI scoring.
       </p>
 
+      <div className="mt-3 flex flex-wrap items-center gap-2">
+        <label
+          htmlFor="sourceCodeFileEditor"
+          className="cursor-pointer rounded-lg border border-gray-200 bg-gray-50 px-3 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-100"
+        >
+          Upload HTML file...
+        </label>
+        <input
+          id="sourceCodeFileEditor"
+          type="file"
+          accept=".html,.htm,text/html"
+          onChange={handleFileChange}
+          className="hidden"
+        />
+        {fileName && (
+          <span className="text-xs text-gray-500">
+            Loaded from <span className="font-medium">{fileName}</span>
+          </span>
+        )}
+      </div>
+
       <textarea
         value={draft}
-        onChange={(e) => setDraft(e.target.value)}
+        onChange={(e) => {
+          setDraft(e.target.value)
+          setFileName(null)
+        }}
         rows={10}
         spellCheck={false}
         maxLength={MAX_SOURCE_CODE_LENGTH}

@@ -4,7 +4,7 @@
 
 export const runtime = 'nodejs'
 
-import { NextRequest, NextResponse } from 'next/server'
+import { NextRequest, NextResponse, after } from 'next/server'
 import { auth } from '@/lib/auth/config'
 import { handleApiError } from '@/lib/api-error'
 import { rateLimit } from '@/lib/rate-limit'
@@ -33,10 +33,16 @@ export async function POST(request: NextRequest) {
     const body = await request.json()
     const project = await submitProject(body)
 
-    // Fire-and-forget: kick off the asynchronous pipeline without blocking the
-    // response. The project is created with crawlStatus/scoreStatus = PENDING,
-    // so a caller who never sees this promise settle still reads a truthful
-    // status.
+    // Kick off the asynchronous pipeline without blocking the response. The
+    // project is created with crawlStatus/scoreStatus = PENDING, so a caller
+    // who never sees this promise settle still reads a truthful status.
+    //
+    // Scheduled via `after()` rather than a bare fire-and-forget: on a
+    // serverless runtime (Vercel) the function can be frozen or torn down the
+    // moment the response is sent, which kills an un-awaited promise before
+    // the crawl (and the scoring it triggers) ever finishes. `after()` keeps
+    // the invocation alive until the callback settles, so the pipeline
+    // reliably runs to completion instead of silently never starting.
     //
     // The live URL is the primary evidence: the crawl stores `rawHtml`,
     // derives `structure`, and only then calls triggerScoring itself. It also
@@ -44,7 +50,7 @@ export async function POST(request: NextRequest) {
     // one exists. Submitting with `sourceCode` already filled in does not skip
     // the crawl — `rawHtml` and `structure` are still worth collecting, and
     // triggerCrawl never overwrites a pasted value.
-    CrawlerService.triggerCrawl(project.id).catch(console.error)
+    after(() => CrawlerService.triggerCrawl(project.id).catch(console.error))
 
     return NextResponse.json(project, { status: 201 })
   } catch (error) {

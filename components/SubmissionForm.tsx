@@ -105,9 +105,41 @@ function SingleSubmissionForm({
   const [errors, setErrors] = useState<Record<string, string>>({})
   const [globalError, setGlobalError] = useState<string | null>(null)
   const [successMessage, setSuccessMessage] = useState<string | null>(null)
-  const [sourceCodeLength, setSourceCodeLength] = useState(0)
+  const [sourceCode, setSourceCode] = useState('')
+  const [fileName, setFileName] = useState<string | null>(null)
+  const [fileError, setFileError] = useState<string | null>(null)
 
   const copy = FORM_COPY
+
+  async function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0]
+    e.target.value = ''
+    if (!file) return
+
+    setFileError(null)
+
+    if (file.size > MAX_SOURCE_CODE_LENGTH) {
+      setFileError(
+        `File is too large — must not exceed ${MAX_SOURCE_CODE_LENGTH.toLocaleString()} characters.`,
+      )
+      return
+    }
+
+    try {
+      const text = await file.text()
+      if (text.length > MAX_SOURCE_CODE_LENGTH) {
+        setFileError(
+          `File content must not exceed ${MAX_SOURCE_CODE_LENGTH.toLocaleString()} characters.`,
+        )
+        return
+      }
+      setSourceCode(text)
+      setFileName(file.name)
+      setErrors((prev) => ({ ...prev, sourceCode: '' }))
+    } catch {
+      setFileError('Could not read the selected file. Please try again.')
+    }
+  }
 
   async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault()
@@ -126,7 +158,7 @@ function SingleSubmissionForm({
       url: (formData.get('url') as string).trim(),
       participantName: (formData.get('participantName') as string).trim(),
       teamName: (formData.get('teamName') as string).trim() || undefined,
-      sourceCode: (formData.get('sourceCode') as string).trim() || undefined,
+      sourceCode: sourceCode.trim() || undefined,
       categoryId: formData.get('categoryId') as string,
     }
 
@@ -186,7 +218,9 @@ function SingleSubmissionForm({
 
         setSuccessMessage(copy.successMessage)
         form.reset()
-        setSourceCodeLength(0)
+        setSourceCode('')
+        setFileName(null)
+        setFileError(null)
         onSuccess()
       } catch {
         setGlobalError('Network error. Please try again.')
@@ -314,13 +348,42 @@ function SingleSubmissionForm({
         >
           Source Code <span className="text-gray-400">(optional)</span>
         </label>
+
+        <div className="mb-2 flex flex-wrap items-center gap-2">
+          <label
+            htmlFor="sourceCodeFile"
+            className="cursor-pointer rounded-lg border border-gray-200 bg-gray-50 px-3 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-100"
+          >
+            Upload HTML file...
+          </label>
+          <input
+            id="sourceCodeFile"
+            type="file"
+            accept=".html,.htm,text/html"
+            onChange={handleFileChange}
+            className="hidden"
+          />
+          {fileName && (
+            <span className="text-xs text-gray-500">
+              Loaded from <span className="font-medium">{fileName}</span>
+            </span>
+          )}
+        </div>
+        {fileError && (
+          <p className="mb-1.5 text-sm text-red-600">{fileError}</p>
+        )}
+
         <textarea
           id="sourceCode"
           name="sourceCode"
           rows={8}
           maxLength={MAX_SOURCE_CODE_LENGTH}
           placeholder={copy.sourceCodePlaceholder}
-          onChange={(e) => setSourceCodeLength(e.target.value.length)}
+          value={sourceCode}
+          onChange={(e) => {
+            setSourceCode(e.target.value)
+            setFileName(null)
+          }}
           className={`w-full px-3 py-2.5 rounded-lg border bg-gray-50 font-mono text-xs transition-colors focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 ${
             errors.sourceCode ? 'border-red-400' : 'border-gray-200'
           }`}
@@ -331,7 +394,7 @@ function SingleSubmissionForm({
         <div className="mt-1.5 flex justify-between gap-4 text-xs text-gray-400">
           <p>{copy.sourceCodeHelp}</p>
           <p className="shrink-0 tabular-nums">
-            {sourceCodeLength.toLocaleString()} /{' '}
+            {sourceCode.length.toLocaleString()} /{' '}
             {MAX_SOURCE_CODE_LENGTH.toLocaleString()}
           </p>
         </div>

@@ -5,7 +5,7 @@
 
 export const runtime = 'nodejs'
 
-import { NextRequest, NextResponse } from 'next/server'
+import { NextRequest, NextResponse, after } from 'next/server'
 import { auth } from '@/lib/auth/config'
 import { handleApiError } from '@/lib/api-error'
 import { rateLimit } from '@/lib/rate-limit'
@@ -17,6 +17,50 @@ import { db } from '@/lib/db'
 const limiter = rateLimit({ interval: 60_000, uniqueTokenPerInterval: 500 })
 
 type RouteContext = { params: Promise<{ id: string }> }
+
+// -----------------------------------------------------------------------
+// GET /api/submissions/[id] — poll the crawl/score pipeline status
+//
+// Read-only, so it skips the rate limiter that guards the mutating PATCH
+// below — the processing indicator on the detail page calls this every 10
+// seconds while a project is still PENDING/PROCESSING, which a 10-req/min
+// limiter would start rejecting on its own.
+// -----------------------------------------------------------------------
+export async function GET(request: NextRequest, context: RouteContext) {
+  try {
+    const session = await auth()
+    if (!session?.user?.id) {
+      return NextResponse.json(
+        { error: 'Unauthorized', message: 'Authentication required.', code: 'UNAUTHORIZED' },
+        { status: 401 },
+      )
+    }
+
+    const { id } = await context.params
+
+    const project = await db.project.findUnique({
+      where: { id },
+      select: {
+        id: true,
+        crawlStatus: true,
+        crawlError: true,
+        scoreStatus: true,
+        finalScore: true,
+      },
+    })
+
+    if (!project) {
+      return NextResponse.json(
+        { error: 'Not Found', message: 'Project not found', code: 'NOT_FOUND' },
+        { status: 404 },
+      )
+    }
+
+    return NextResponse.json(project)
+  } catch (error) {
+    return handleApiError(error)
+  }
+}
 
 // -----------------------------------------------------------------------
 // PATCH /api/submissions/[id] — replace a project's Source Code
@@ -78,10 +122,12 @@ export async function PATCH(
       select: { id: true, sourceCode: true, scoreStatus: true },
     })
 
-    // Fire-and-forget: re-scoring runs on the AI provider's clock, well past
-    // any request timeout. The row already reads PENDING, so a caller who
-    // never sees this promise settle still reads a truthful status.
-    ScorerService.triggerScoring(id).catch(console.error)
+    // Re-scoring runs on the AI provider's clock, well past any request
+    // timeout, so it is scheduled rather than awaited. The row already reads
+    // PENDING, so a caller who never sees this promise settle still reads a
+    // truthful status. Scheduled via `after()` so the serverless invocation
+    // stays alive long enough for scoring to actually finish.
+    after(() => ScorerService.triggerScoring(id).catch(console.error))
 
     return NextResponse.json(updated)
   } catch (error) {

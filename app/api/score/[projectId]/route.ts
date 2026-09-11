@@ -5,7 +5,7 @@
 
 export const runtime = 'nodejs'
 
-import { NextRequest, NextResponse } from 'next/server'
+import { NextRequest, NextResponse, after } from 'next/server'
 import { auth } from '@/lib/auth/config'
 import { handleApiError } from '@/lib/api-error'
 import { rateLimit } from '@/lib/rate-limit'
@@ -49,8 +49,11 @@ export async function POST(
       )
     }
 
-    // Fire-and-forget: trigger AI scoring asynchronously without blocking the response
-    ScorerService.triggerScoring(projectId).catch(console.error)
+    // Trigger AI scoring asynchronously without blocking the response.
+    // `after()` keeps the serverless invocation alive until scoring actually
+    // finishes, instead of risking the runtime killing an un-awaited promise
+    // the moment this response is sent.
+    after(() => ScorerService.triggerScoring(projectId).catch(console.error))
 
     // Return the project with current scoreStatus
     return NextResponse.json({

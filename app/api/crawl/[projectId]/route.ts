@@ -5,7 +5,7 @@
 
 export const runtime = 'nodejs'
 
-import { NextRequest, NextResponse } from 'next/server'
+import { NextRequest, NextResponse, after } from 'next/server'
 import { auth } from '@/lib/auth/config'
 import { handleApiError } from '@/lib/api-error'
 import { rateLimit } from '@/lib/rate-limit'
@@ -48,11 +48,15 @@ export async function POST(
       )
     }
 
-    // Fire-and-forget: trigger crawl asynchronously without blocking the response
+    // Trigger the crawl asynchronously without blocking the response.
+    // Scheduled via `after()` so the serverless invocation stays alive until
+    // the crawl (and the scoring it chains into) actually finishes — a bare
+    // un-awaited promise can be killed by the runtime as soon as this response
+    // is sent.
     if (action === 'retrigger') {
-      CrawlerService.retriggerCrawl(projectId).catch(console.error)
+      after(() => CrawlerService.retriggerCrawl(projectId).catch(console.error))
     } else {
-      CrawlerService.triggerCrawl(projectId).catch(console.error)
+      after(() => CrawlerService.triggerCrawl(projectId).catch(console.error))
     }
 
     // Return the current project status (will transition to PROCESSING shortly)
