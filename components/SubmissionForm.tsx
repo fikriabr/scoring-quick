@@ -29,10 +29,13 @@ const MAX_NAME_LENGTH = 255
 const FORM_COPY = {
   urlLabel: 'Project URL',
   urlPlaceholder: 'https://example.com/my-project',
-  urlHelp: 'Any hostname is accepted, as long as the URL uses http or https.',
+  urlHelp:
+    'Optional if Source Code is provided below. Any hostname is accepted, as long as the URL uses http or https.',
   sourceCodePlaceholder: "Paste the page's HTML markup here...",
   sourceCodeHelp:
-    "The AI scorer derives the page's HTML structure from this. Leave blank to let the crawler fetch the markup from the URL instead.",
+    "The AI scorer derives the page's HTML structure from this. Leave blank to let the crawler fetch the markup from the URL instead — required if no URL is provided above.",
+  urlOrSourceCodeError:
+    'Provide a Project URL or upload/paste Source Code — at least one is required.',
   successMessage:
     'Project submitted successfully. Fetching the page, then AI scoring starts.',
 }
@@ -108,6 +111,10 @@ function SingleSubmissionForm({
   const [sourceCode, setSourceCode] = useState('')
   const [fileName, setFileName] = useState<string | null>(null)
   const [fileError, setFileError] = useState<string | null>(null)
+  // Tracked purely so the Source Code label can flip between "optional" and
+  // "required" live as the admin fills in (or clears) the URL field.
+  const [urlValue, setUrlValue] = useState('')
+  const sourceCodeRequired = urlValue.trim().length === 0
 
   const copy = FORM_COPY
 
@@ -155,7 +162,7 @@ function SingleSubmissionForm({
     // sourceCode, categoryId). Empty optional fields are sent as undefined so
     // the service writes SQL NULL rather than an empty string.
     const payload = {
-      url: (formData.get('url') as string).trim(),
+      url: (formData.get('url') as string).trim() || undefined,
       participantName: (formData.get('participantName') as string).trim(),
       teamName: (formData.get('teamName') as string).trim() || undefined,
       sourceCode: sourceCode.trim() || undefined,
@@ -165,13 +172,16 @@ function SingleSubmissionForm({
     // Client-side validation mirroring SubmissionSchema so invalid input is
     // reported per-field instead of coming back as one server-side string.
     const fieldErrors: Record<string, string> = {}
-    if (!payload.url) {
-      fieldErrors.url = 'URL is required'
-    } else {
+    if (payload.url) {
       // Same rule, same argument the server gets — so the single submission
       // route, the CSV import, and this form always agree.
       const urlCheck = validateProjectUrl(payload.url)
       if (!urlCheck.ok) fieldErrors.url = urlCheck.message
+    } else if (!payload.sourceCode) {
+      // Neither field is present — SubmissionSchema requires at least one,
+      // and the error is attached to sourceCode there too so both surfaces
+      // point the admin at the same field.
+      fieldErrors.sourceCode = copy.urlOrSourceCodeError
     }
     if (!payload.participantName) {
       fieldErrors.participantName = 'Participant name is required'
@@ -221,6 +231,7 @@ function SingleSubmissionForm({
         setSourceCode('')
         setFileName(null)
         setFileError(null)
+        setUrlValue('')
         onSuccess()
       } catch {
         setGlobalError('Network error. Please try again.')
@@ -269,20 +280,20 @@ function SingleSubmissionForm({
         )}
       </div>
 
-      {/* URL field */}
+      {/* URL field — optional as long as Source Code is provided below */}
       <div>
         <label
           htmlFor="url"
           className="block text-sm font-medium text-gray-700 mb-1.5"
         >
-          {copy.urlLabel} <span className="text-red-500">*</span>
+          {copy.urlLabel} <span className="text-gray-400">(optional)</span>
         </label>
         <input
           id="url"
           name="url"
           type="url"
           placeholder={copy.urlPlaceholder}
-          required
+          onChange={(e) => setUrlValue(e.target.value)}
           className={`w-full px-3 py-2.5 rounded-lg border bg-gray-50 text-sm transition-colors focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 ${
             errors.url ? 'border-red-400' : 'border-gray-200'
           }`}
@@ -340,13 +351,19 @@ function SingleSubmissionForm({
         )}
       </div>
 
-      {/* Source Code field (optional — Project.sourceCode, the scorer's primary evidence) */}
+      {/* Source Code field — Project.sourceCode, the scorer's primary
+          evidence. Required whenever no Project URL is provided above. */}
       <div>
         <label
           htmlFor="sourceCode"
           className="block text-sm font-medium text-gray-700 mb-1.5"
         >
-          Source Code <span className="text-gray-400">(optional)</span>
+          Source Code{' '}
+          {sourceCodeRequired ? (
+            <span className="text-red-500">*</span>
+          ) : (
+            <span className="text-gray-400">(optional)</span>
+          )}
         </label>
 
         <div className="mb-2 flex flex-wrap items-center gap-2">
@@ -527,9 +544,10 @@ function CsvUploadForm({
           className="w-full px-3 py-2.5 rounded-lg border border-gray-200 bg-gray-50 text-sm transition-colors file:mr-3 file:rounded-md file:border-0 file:bg-blue-50 file:px-3 file:py-1.5 file:text-sm file:font-medium file:text-blue-700 hover:file:bg-blue-100 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
         />
         <p className="mt-1.5 text-xs text-gray-400">
-          CSV columns: <code>url</code>, <code>participant_name</code>,{' '}
-          <code>team_name</code> (optional), <code>source_code</code>{' '}
-          (optional). Header casing and spacing don&apos;t matter, and{' '}
+          CSV columns: <code>participant_name</code> (required),{' '}
+          <code>url</code> and <code>source_code</code> (each optional, but a
+          row needs at least one of them), <code>team_name</code> (optional).
+          Header casing and spacing don&apos;t matter, and{' '}
           <code>,</code> <code>;</code> or tab separated files all work.
         </p>
       </div>
@@ -579,10 +597,13 @@ export function RetryButton({
   projectId,
   type,
   disabled,
+  title,
 }: {
   projectId: string
   type: 'crawl' | 'score'
   disabled?: boolean
+  /** Tooltip shown on hover — used to explain *why* the button is disabled. */
+  title?: string
 }) {
   const [isPending, startTransition] = useTransition()
   const router = useRouter()
@@ -606,6 +627,7 @@ export function RetryButton({
       type="button"
       onClick={handleClick}
       disabled={disabled || isPending}
+      title={title}
       className={`px-2.5 py-1 text-xs font-medium rounded-full transition-colors ${
         disabled || isPending
           ? 'bg-gray-100 text-gray-400 cursor-not-allowed'

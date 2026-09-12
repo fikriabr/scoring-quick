@@ -140,7 +140,7 @@ export function exportToCsv(projects: ProjectWithScores[]): string {
       String(project.rank ?? ''),
       project.participantName,
       project.teamName ?? '',
-      project.url,
+      project.url ?? '',
       project.finalScore != null ? String(project.finalScore) : '',
     ]
 

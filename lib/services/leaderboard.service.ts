@@ -76,7 +76,7 @@ function toRankedProjects(
   rows: Array<{
     id: string
     categoryId: string
-    url: string
+    url: string | null
     participantName: string
     teamName: string | null
     crawlStatus: import('@prisma/client').CrawlStatus
@@ -137,7 +137,7 @@ export async function getLeaderboard(
   categoryId: string,
 ): Promise<ProjectWithScores[]> {
   const projects = await db.project.findMany({
-    where: { categoryId },
+    where: { categoryId, isActive: true },
     include: PROJECT_INCLUDE,
   })
 

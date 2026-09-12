@@ -165,7 +165,8 @@ describe('Property 17: Export Data Completeness', () => {
 
         // Each project's unique URL should appear in exactly one data row
         for (const project of projects) {
-          const matchingRows = dataRows.filter((row) => row.includes(project.url))
+          // Non-null: exportDataArb always assigns a real URL string.
+          const matchingRows = dataRows.filter((row) => row.includes(project.url!))
           expect(matchingRows.length).toBe(1)
         }
       }),
@@ -187,7 +188,8 @@ describe('Property 17: Export Data Completeness', () => {
 
         for (const project of projects) {
           // Find the row for this project
-          const row = dataRows.find((r) => r.includes(project.url))
+          // Non-null: exportDataArb always assigns a real URL string.
+          const row = dataRows.find((r) => r.includes(project.url!))
           expect(row).toBeDefined()
 
           // Parse the row into fields respecting CSV quoting

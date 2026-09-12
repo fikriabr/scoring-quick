@@ -58,7 +58,7 @@ export default async function JuryProjectsPage({
 
   // Fetch projects in assigned categories with parameters and jury scores
   const projects = await db.project.findMany({
-    where: { categoryId: { in: categoriesToFetch } },
+    where: { categoryId: { in: categoriesToFetch }, isActive: true },
     orderBy: { createdAt: 'desc' },
     include: {
       category: {
@@ -172,14 +172,18 @@ export default async function JuryProjectsPage({
                     )}
                   </td>
                   <td className="px-3 py-2">
-                    <a
-                      href={project.url}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="text-blue-600 hover:underline text-xs break-all"
-                    >
-                      {project.url}
-                    </a>
+                    {project.url ? (
+                      <a
+                        href={project.url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-blue-600 hover:underline text-xs break-all"
+                      >
+                        {project.url}
+                      </a>
+                    ) : (
+                      <span className="text-xs text-gray-400">Source Code only</span>
+                    )}
                   </td>
                   <td className="px-3 py-2 text-xs">{project.categoryName}</td>
                   <td className="px-3 py-2">

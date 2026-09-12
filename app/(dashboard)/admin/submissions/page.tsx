@@ -9,8 +9,9 @@ import { groupProjectsByCategory } from '@/lib/submission-grouping'
 import ProjectsTable from '@/components/ProjectsTable'
 
 export default async function AdminSubmissionsPage() {
-  // Fetch all projects with category info
+  // Fetch all active (non-deleted) projects with category info
   const projects = await db.project.findMany({
+    where: { isActive: true },
     orderBy: { createdAt: 'desc' },
     include: {
       category: {

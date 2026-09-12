@@ -18,7 +18,7 @@ interface ProjectForComparison {
   id: string
   participantName: string
   teamName: string | null
-  url: string
+  url: string | null
   finalScore: number | null
   rank: number | null
   aiScores: Array<{ parameterId: string; score: number; reasoning: string }>

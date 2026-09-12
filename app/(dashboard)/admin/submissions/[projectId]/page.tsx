@@ -10,6 +10,7 @@ import { db } from '@/lib/db'
 import { RetryButton } from '@/components/SubmissionForm'
 import SourceCodeEditor from '@/components/SourceCodeEditor'
 import ProcessingBanner from '@/components/ProcessingBanner'
+import DeleteSubmissionButton from '@/components/DeleteSubmissionButton'
 
 interface PageProps {
   params: Promise<{ projectId: string }>
@@ -45,6 +46,14 @@ export default async function ProjectDetailPage({ params }: PageProps) {
         Back to Submissions
       </Link>
 
+      {!project.isActive && (
+        <div className="rounded-xl bg-red-50 p-4 text-sm font-medium text-red-700 ring-1 ring-red-200">
+          This submission has been deleted. It is hidden from the submissions
+          list, leaderboards, and jury queue — this detail page is still
+          reachable by direct link.
+        </div>
+      )}
+
       {/* Live status while crawling/scoring is still running */}
       <ProcessingBanner
         projectId={project.id}
@@ -63,20 +72,31 @@ export default async function ProjectDetailPage({ params }: PageProps) {
             {project.teamName && (
               <p className="mt-1 text-sm text-gray-500">{project.teamName}</p>
             )}
-            <a
-              href={project.url}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="mt-2 inline-block text-sm text-blue-600 hover:text-blue-700 hover:underline break-all transition-colors"
-            >
-              {project.url}
-            </a>
+            {project.url ? (
+              <a
+                href={project.url}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="mt-2 inline-block text-sm text-blue-600 hover:text-blue-700 hover:underline break-all transition-colors"
+              >
+                {project.url}
+              </a>
+            ) : (
+              <p className="mt-2 text-sm text-gray-400">
+                No URL — evaluated from uploaded Source Code only.
+              </p>
+            )}
             <div className="mt-3 flex flex-wrap items-center gap-2 text-xs text-gray-500">
               <span className="rounded-md bg-gray-50 px-2 py-1">
                 Category: {project.category.name}
               </span>
               <StatusBadge status={project.crawlStatus} />
               <StatusBadge status={project.scoreStatus} />
+              {!project.isActive && (
+                <span className="inline-flex items-center rounded-full bg-red-50 px-2.5 py-0.5 text-xs font-medium text-red-700 ring-1 ring-red-200">
+                  DELETED
+                </span>
+              )}
             </div>
           </div>
 
@@ -90,18 +110,30 @@ export default async function ProjectDetailPage({ params }: PageProps) {
           </div>
         </div>
 
-        {/* Retry actions */}
-        <div className="mt-5 flex gap-2 border-t border-gray-50 pt-4">
+        {/* Retry + delete actions */}
+        <div className="mt-5 flex flex-wrap items-center gap-2 border-t border-gray-50 pt-4">
           <RetryButton
             projectId={project.id}
             type="crawl"
-            disabled={project.crawlStatus === 'PROCESSING'}
+            disabled={
+              !project.isActive ||
+              project.crawlStatus === 'PROCESSING' ||
+              !project.url
+            }
+            title={!project.url ? 'No URL to crawl — this project was submitted with Source Code only.' : undefined}
           />
           <RetryButton
             projectId={project.id}
             type="score"
-            disabled={project.scoreStatus === 'PROCESSING'}
+            disabled={!project.isActive || project.scoreStatus === 'PROCESSING'}
           />
+          {project.isActive && (
+            <DeleteSubmissionButton
+              projectId={project.id}
+              participantName={project.participantName}
+              redirectTo="/admin/submissions"
+            />
+          )}
         </div>
       </div>
 

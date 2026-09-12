@@ -80,7 +80,17 @@ function truncate(text: string, max: number): string {
  * the same way.
  */
 function hasUsableSourceCode(sourceCode: string | null | undefined): boolean {
-  return typeof sourceCode === 'string' && sourceCode.trim().length > 0
+  return hasText(sourceCode)
+}
+
+/**
+ * Generic "is this nullable string non-blank" check, shared by URL and
+ * Source Code. A type predicate so callers narrow `string | null` to
+ * `string` in the branch that follows, instead of needing a separate
+ * non-null assertion.
+ */
+function hasText(value: string | null | undefined): value is string {
+  return typeof value === 'string' && value.trim().length > 0
 }
 
 function buildMetaRegex(attr: string, key: string, contentFirst: boolean): RegExp {
@@ -160,9 +170,31 @@ export class CrawlerService {
         include: { category: true },
       })
 
-      console.log('[Crawler] Starting crawl for project ' + projectId + ' (' + project.url + ')')
+      console.log('[Crawler] Starting crawl for project ' + projectId + ' (' + (project.url ?? 'no URL') + ')')
 
       if (guard.timedOut) return
+
+      /**
+       * No URL to fetch — the project was submitted with Source Code only
+       * (`SubmissionSchema`/`CsvRowSchema` guarantee `sourceCode` is present
+       * whenever `url` is absent, so there is always evidence to score from).
+       * There is nothing for this step to do, so it's recorded as a trivial
+       * SUCCESS and scoring is triggered directly, without ever visiting
+       * PROCESSING — the admin UI treats "no URL" as a reason `Retry Crawl`
+       * stays disabled rather than as an in-progress crawl.
+       */
+      if (!hasText(project.url)) {
+        console.log(
+          '[Crawler] No URL for project ' + projectId + ' - skipping fetch, scoring from uploaded Source Code',
+        )
+        await db.project.update({
+          where: { id: projectId },
+          data: { crawlStatus: 'SUCCESS', crawlError: null },
+        })
+        if (guard.timedOut) return
+        await ScorerService.triggerScoring(projectId).catch(console.error)
+        return
+      }
 
       await db.project.update({
         where: { id: projectId },

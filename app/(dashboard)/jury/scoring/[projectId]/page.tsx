@@ -41,7 +41,10 @@ export default async function JuryScoringPage({
     },
   })
 
-  if (!project) {
+  // A deleted (isActive: false) submission is treated as not found for jury
+  // — it's still reachable on the admin detail page by direct id, but jury
+  // should never see or score something an admin has removed.
+  if (!project || !project.isActive) {
     notFound()
   }
 
@@ -119,14 +122,18 @@ export default async function JuryScoringPage({
         {project.teamName && (
           <p className="text-sm text-gray-500">Team: {project.teamName}</p>
         )}
-        <a
-          href={project.url}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="text-sm text-blue-600 hover:underline break-all"
-        >
-          {project.url}
-        </a>
+        {project.url ? (
+          <a
+            href={project.url}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-sm text-blue-600 hover:underline break-all"
+          >
+            {project.url}
+          </a>
+        ) : (
+          <p className="text-sm text-gray-400">Source Code only — no URL.</p>
+        )}
       </div>
 
       {/* CrawlMetadata section */}

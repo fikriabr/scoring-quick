@@ -63,6 +63,61 @@ export async function GET(request: NextRequest, context: RouteContext) {
 }
 
 // -----------------------------------------------------------------------
+// DELETE /api/submissions/[id] — soft-delete a submission
+//
+// Sets `isActive = false` rather than removing the row: AIScore/JuryScore/
+// AuditLog history stays intact for audit purposes, and the (categoryId,
+// url) pair frees up so the same URL can be re-submitted. Listings (admin
+// submissions, jury queue, leaderboards) filter on `isActive: true`, so a
+// deleted submission simply stops appearing there; its detail page still
+// resolves by id for an admin who has the direct link.
+// -----------------------------------------------------------------------
+export async function DELETE(request: NextRequest, context: RouteContext) {
+  try {
+    const session = await auth()
+    if (!session || session.user.role !== 'ADMIN') {
+      return NextResponse.json(
+        { error: 'Forbidden', message: 'Admin only', code: 'FORBIDDEN' },
+        { status: 403 },
+      )
+    }
+
+    // Rate limit: 10 requests per minute per authenticated user
+    limiter.check(10, session.user.id)
+
+    const { id } = await context.params
+
+    const project = await db.project.findUnique({
+      where: { id },
+      select: { id: true, isActive: true },
+    })
+    if (!project) {
+      return NextResponse.json(
+        { error: 'Not Found', message: 'Project not found', code: 'NOT_FOUND' },
+        { status: 404 },
+      )
+    }
+
+    // Already deleted — treat as a successful no-op rather than erroring, so
+    // a retried request (double-click, slow network) doesn't surface a
+    // spurious failure.
+    if (!project.isActive) {
+      return NextResponse.json({ id: project.id, isActive: false })
+    }
+
+    const updated = await db.project.update({
+      where: { id },
+      data: { isActive: false },
+      select: { id: true, isActive: true },
+    })
+
+    return NextResponse.json(updated)
+  } catch (error) {
+    return handleApiError(error)
+  }
+}
+
+// -----------------------------------------------------------------------
 // PATCH /api/submissions/[id] — replace a project's Source Code
 //
 // Body: { sourceCode: string | null }

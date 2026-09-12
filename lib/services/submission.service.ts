@@ -153,19 +153,24 @@ function detectDelimiter(csvContent: string): string {
 // -----------------------------------------------------------------------
 
 export async function submitProject(input: unknown): Promise<Project> {
-  // Validate via Zod — throws ZodError on invalid input
+  // Validate via Zod — throws ZodError on invalid input. SubmissionSchema
+  // guarantees at least one of `url`/`sourceCode` is present.
   const data: SubmissionInput = SubmissionSchema.parse(input)
+  const url = data.url && data.url.trim().length > 0 ? data.url : null
 
-  // Duplicate check: same URL within the same category
-  const existing = await db.project.findFirst({
-    where: {
-      categoryId: data.categoryId,
-      url: data.url,
-    },
-  })
+  // Duplicate check: same URL within the same category. Skipped when there is
+  // no URL — a Source-Code-only submission has no natural key to dedupe on,
+  // and Postgres itself treats NULL as distinct from NULL under the
+  // `@@unique([categoryId, url])` constraint, so nothing would be caught here
+  // anyway.
+  if (url) {
+    const existing = await db.project.findFirst({
+      where: { categoryId: data.categoryId, url },
+    })
 
-  if (existing) {
-    throw new DuplicateUrlError(data.url, data.categoryId)
+    if (existing) {
+      throw new DuplicateUrlError(url, data.categoryId)
+    }
   }
 
   // Create Project record — crawlStatus and scoreStatus default to PENDING
@@ -173,7 +178,7 @@ export async function submitProject(input: unknown): Promise<Project> {
   const project = await db.project.create({
     data: {
       categoryId: data.categoryId,
-      url: data.url,
+      url,
       participantName: data.participantName,
       teamName: data.teamName ?? null,
       sourceCode: data.sourceCode ?? null,
@@ -233,7 +238,10 @@ export async function bulkImportFromCsv(
 
   // Fail fast with one actionable message when a required column is absent,
   // instead of repeating the same per-row error for every line in the file.
-  const missingColumns = (['url', 'participantName'] as const).filter(
+  // `url` is not in this list — it's optional per row (a row may rely on
+  // `source_code` alone), enforced by `CsvRowSchema`'s per-row refinement
+  // rather than at the header level.
+  const missingColumns = (['participantName'] as const).filter(
     (column) => !headers.includes(column),
   )
 
@@ -297,17 +305,23 @@ export async function bulkImportFromCsv(
     const { url, participantName, teamName, sourceCode } = parsed.data
 
     try {
-      // Skip silently if exact duplicate (same URL + categoryId) already exists
-      const existing = await db.project.findFirst({
-        where: { categoryId, url },
-      })
-
-      if (existing) {
-        errors.push({
-          row: rowNumber,
-          message: `URL "${url}" already exists in this category.`,
+      // Skip silently if exact duplicate (same URL + categoryId) already
+      // exists. Skipped for a Source-Code-only row (`url` is `null`) — there
+      // is no natural key to dedupe on, and matching on `url: null` would
+      // incorrectly flag every no-URL row in the category as a duplicate of
+      // the last one.
+      if (url) {
+        const existing = await db.project.findFirst({
+          where: { categoryId, url },
         })
-        continue
+
+        if (existing) {
+          errors.push({
+            row: rowNumber,
+            message: `URL "${url}" already exists in this category.`,
+          })
+          continue
+        }
       }
 
       const project = await db.project.create({

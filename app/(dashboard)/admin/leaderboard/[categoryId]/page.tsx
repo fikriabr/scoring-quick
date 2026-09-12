@@ -118,14 +118,18 @@ export default async function AdminLeaderboardPage({ params }: PageProps) {
                     )}
                   </td>
                   <td className="px-4 py-3 text-sm">
-                    <a
-                      href={project.url}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="text-blue-600 hover:underline truncate block max-w-[200px]"
-                    >
-                      {project.url}
-                    </a>
+                    {project.url ? (
+                      <a
+                        href={project.url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-blue-600 hover:underline truncate block max-w-[200px]"
+                      >
+                        {project.url}
+                      </a>
+                    ) : (
+                      <span className="text-xs text-gray-400">Source Code only</span>
+                    )}
                   </td>
                   <td className="px-4 py-3 text-sm text-right font-semibold text-gray-900">
                     {project.finalScore != null

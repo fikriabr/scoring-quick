@@ -110,7 +110,12 @@ model Parameter {
 model Project {
   id              String      @id @default(cuid())
   categoryId      String
-  url             String
+  /**
+   * Optional: a project may be submitted with pasted/uploaded Source Code
+   * only, with no live URL to crawl. `SubmissionSchema`/`CsvRowSchema`
+   * enforce that at least one of `url` or `sourceCode` is present.
+   */
+  url             String?
   participantName String
   teamName        String?
   sourceCode      String?
@@ -118,6 +123,19 @@ model Project {
   crawlError      String?
   scoreStatus     ScoreStatus @default(PENDING)
   finalScore      Float?
+  /**
+   * Soft-delete flag. "Deleting" a submission sets this to `false` rather
+   * than removing the row — AIScore/JuryScore/AuditLog history stays intact.
+   * Listings (admin submissions, jury queue, leaderboards) filter on
+   * `isActive: true`; a direct by-id lookup (the detail page) still finds it
+   * so the record isn't just gone.
+   *
+   * Note: `@@unique([categoryId, url])` below still applies to a deleted row
+   * — Postgres has no concept of "isActive" in that index — so the same URL
+   * cannot be re-submitted to the category while the deleted row still holds
+   * it.
+   */
+  isActive        Boolean     @default(true)
   createdAt       DateTime    @default(now())
   updatedAt       DateTime    @updatedAt
 

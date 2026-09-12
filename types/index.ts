@@ -129,7 +129,7 @@ export interface ParameterScore {
 export interface ProjectWithScores {
   id: string
   categoryId: string
-  url: string
+  url: string | null
   participantName: string
   teamName: string | null
   crawlStatus: CrawlStatus

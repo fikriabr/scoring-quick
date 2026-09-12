@@ -22,9 +22,13 @@ export { MAX_SOURCE_CODE_LENGTH, SOURCE_CODE_TOO_LONG_MESSAGE }
  * `refine`) is used so the specific reason — unparseable or wrong scheme —
  * reaches the caller instead of one catch-all message, and `path: ['url']`
  * keeps the issue attached to the field the admin has to fix.
+ *
+ * `url` is optional (Requirement: a project may be submitted with Source Code
+ * only, no live URL), so a blank/absent value is not itself an error here —
+ * that is `refineUrlOrSourceCode`'s job.
  */
 function refineProjectUrl(
-  data: { url: string },
+  data: { url?: string | null },
   ctx: z.RefinementCtx,
 ): void {
   if (typeof data.url !== 'string' || data.url.length === 0) return
@@ -37,6 +41,33 @@ function refineProjectUrl(
       path: ['url'],
     })
   }
+}
+
+/** Whether a text field holds anything beyond whitespace. */
+function hasText(value: string | null | undefined): boolean {
+  return typeof value === 'string' && value.trim().length > 0
+}
+
+/**
+ * A project needs *some* evidence to crawl or score from: either a live URL
+ * to fetch, or Source Code pasted/uploaded directly. Neither field is
+ * required on its own — this is what enforces that at least one of them is
+ * present. Attached to `sourceCode` (rather than `url`) so the message lands
+ * next to the field an admin submitting without a URL is most likely to be
+ * missing.
+ */
+function refineUrlOrSourceCode(
+  data: { url?: string | null; sourceCode?: string | null },
+  ctx: z.RefinementCtx,
+): void {
+  if (hasText(data.url) || hasText(data.sourceCode)) return
+
+  ctx.addIssue({
+    code: z.ZodIssueCode.custom,
+    message:
+      'Provide a Project URL or upload/paste Source Code — at least one is required.',
+    path: ['sourceCode'],
+  })
 }
 
 // -----------------------------------------------------------------------
@@ -204,7 +235,12 @@ export type ParameterSetInput = z.infer<typeof ParameterSetSchema>
 // -----------------------------------------------------------------------
 
 export const SubmissionSchema = z.object({
-  url: z.string().min(1, 'URL is required'),
+  /**
+   * Optional: a submission may instead rely entirely on pasted/uploaded
+   * Source Code, with no live URL to crawl. `refineUrlOrSourceCode` below
+   * enforces that at least one of `url`/`sourceCode` is present.
+   */
+  url: z.string().optional().nullable(),
   participantName: z
     .string()
     .min(1, 'Participant name is required')
@@ -220,7 +256,9 @@ export const SubmissionSchema = z.object({
     .optional()
     .nullable(),
   categoryId: z.string().min(1, 'Category ID is required'),
-}).superRefine(refineProjectUrl)
+})
+  .superRefine(refineProjectUrl)
+  .superRefine(refineUrlOrSourceCode)
 
 export type SubmissionInput = z.infer<typeof SubmissionSchema>
 
@@ -298,7 +336,13 @@ export type JuryScoreInput = z.infer<typeof JuryScoreSchema>
 // -----------------------------------------------------------------------
 
 export const CsvRowSchema = z.object({
-  url: z.string().min(1, 'URL is required'),
+  /**
+   * Optional, same as `SubmissionSchema.url` — a row may rely entirely on
+   * `source_code` instead. Nullable-but-not-optional for the same `.pipe()`
+   * reason as `teamName`/`sourceCode` below: the raw transform always
+   * produces `string | null`, never `undefined`.
+   */
+  url: z.string().nullable(),
   participantName: z
     .string()
     .min(1, 'Participant name is required')
@@ -324,7 +368,9 @@ export const CsvRowSchema = z.object({
     .max(MAX_SOURCE_CODE_LENGTH, SOURCE_CODE_TOO_LONG_MESSAGE)
     .nullable(),
   categoryId: z.string().min(1, 'Category ID is required'),
-}).superRefine(refineProjectUrl)
+})
+  .superRefine(refineProjectUrl)
+  .superRefine(refineUrlOrSourceCode)
 
 export type CsvRowInput = z.infer<typeof CsvRowSchema>
 
@@ -335,7 +381,7 @@ export type CsvRowInput = z.infer<typeof CsvRowSchema>
 
 export const CsvRowRawSchema = z
   .object({
-    url: z.string().min(1, 'URL is required'),
+    url: z.string().optional(),
     participant_name: z.string().optional(),
     participantName: z.string().optional(),
     team_name: z.string().optional().nullable(),
@@ -348,8 +394,11 @@ export const CsvRowRawSchema = z
   .transform((row) => {
     const teamRaw = row.teamName ?? row.team_name
     const sourceRaw = row.sourceCode ?? row.source_code
+    const urlRaw = row.url
     return {
-      url: row.url,
+      // Blank/absent means "no URL for this row" — same treatment as
+      // teamName/sourceCode below, so a row can rely on source_code alone.
+      url: urlRaw != null && urlRaw.trim() !== '' ? urlRaw.trim() : null,
       participantName: (row.participantName ?? row.participant_name ?? '').trim(),
       // Ensure teamName is always string | null (never undefined) for CsvRowSchema
       teamName: teamRaw != null && teamRaw.trim() !== '' ? teamRaw.trim() : null,

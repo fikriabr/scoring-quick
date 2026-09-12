@@ -10,13 +10,14 @@
 import Link from 'next/link'
 import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
+import DeleteSubmissionButton from '@/components/DeleteSubmissionButton'
 
 // -----------------------------------------------------------------------
 // SerializedProject — shape of a project row as rendered by this table
 // -----------------------------------------------------------------------
 export type SerializedProject = {
   id: string
-  url: string
+  url: string | null
   participantName: string
   teamName: string | null
   crawlStatus: string
@@ -179,14 +180,18 @@ function ProjectRow({ project }: { project: SerializedProject }) {
         )}
       </td>
       <td className="px-4 py-3">
-        <a
-          href={project.url}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="text-blue-600 hover:text-blue-700 hover:underline text-xs break-all transition-colors"
-        >
-          {project.url}
-        </a>
+        {project.url ? (
+          <a
+            href={project.url}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-blue-600 hover:text-blue-700 hover:underline text-xs break-all transition-colors"
+          >
+            {project.url}
+          </a>
+        ) : (
+          <span className="text-xs text-gray-400">Source Code only</span>
+        )}
       </td>
       <td className="px-4 py-3">
         <StatusBadge status={project.crawlStatus} />
@@ -195,18 +200,22 @@ function ProjectRow({ project }: { project: SerializedProject }) {
         <StatusBadge status={project.scoreStatus} />
       </td>
       {/*
-        Actions cell — only "View" is exposed here; the retry crawl/score
+        Actions cell — "View" and "Delete" here; the retry crawl/score
         buttons are hidden on this list and remain available on the
         submission detail page (/admin/submissions/[projectId]).
       */}
       <td className="px-4 py-3 text-center align-middle">
-        <div className="flex items-center justify-center">
+        <div className="flex items-center justify-center gap-2">
           <Link
             href={`/admin/submissions/${project.id}`}
             className="px-2.5 py-1 text-xs font-medium rounded-full bg-gray-100 text-gray-700 hover:bg-gray-200 transition-colors"
           >
             View
           </Link>
+          <DeleteSubmissionButton
+            projectId={project.id}
+            participantName={project.participantName}
+          />
         </div>
       </td>
     </tr>

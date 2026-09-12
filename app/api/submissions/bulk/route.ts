@@ -5,7 +5,7 @@
 
 export const runtime = 'nodejs'
 
-import { NextRequest, NextResponse } from 'next/server'
+import { NextRequest, NextResponse, after } from 'next/server'
 import { auth } from '@/lib/auth/config'
 import { handleApiError } from '@/lib/api-error'
 import { rateLimit } from '@/lib/rate-limit'
@@ -80,15 +80,21 @@ export async function POST(request: NextRequest) {
     // category" would also match projects left PENDING by an earlier import
     // and crawl them a second time.
     if (result.created.length > 0) {
-      // Fire-and-forget, but sequential: a 200-row import would otherwise
-      // open 200 outbound fetches at once, each holding a 15-second timeout.
-      // Awaiting inside this un-awaited async function keeps one crawl in
-      // flight at a time without delaying the response below, and without
-      // introducing a scheduler this codebase has no other use for. The
-      // tradeoff is latency — the last project in a large import starts late —
-      // which is acceptable for a background pipeline whose status the admin
-      // polls anyway.
-      void (async () => {
+      // Scheduled via `after()`, but sequential inside it: a 200-row import
+      // would otherwise open 200 outbound fetches at once, each holding a
+      // 15-second timeout. Looping inside one `after()` callback keeps one
+      // crawl in flight at a time without delaying the response below, and
+      // without introducing a scheduler this codebase has no other use for.
+      // The tradeoff is latency — the last project in a large import starts
+      // late — which is acceptable for a background pipeline whose status
+      // the admin polls anyway.
+      //
+      // `after()` (rather than a bare un-awaited call) matters here for the
+      // same reason as every other trigger point: on a serverless runtime
+      // (Vercel) the invocation can be frozen the moment this response is
+      // sent, which would kill the loop after crawling only the first project
+      // or two.
+      after(async () => {
         for (const project of result.created) {
           try {
             await CrawlerService.triggerCrawl(project.id)
@@ -97,7 +103,7 @@ export async function POST(request: NextRequest) {
             console.error(error)
           }
         }
-      })()
+      })
     }
 
     return NextResponse.json(result, { status: 200 })

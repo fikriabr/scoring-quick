@@ -48,6 +48,20 @@ export async function POST(
       )
     }
 
+    // A project submitted with Source Code only has no URL to crawl. The
+    // "Retry Crawl" button is disabled client-side for this case; this is the
+    // server-side backstop for a direct API call.
+    if (!project.url || project.url.trim().length === 0) {
+      return NextResponse.json(
+        {
+          error: 'Bad Request',
+          message: 'This project has no URL to crawl — it was submitted with Source Code only.',
+          code: 'NO_URL',
+        },
+        { status: 400 },
+      )
+    }
+
     // Trigger the crawl asynchronously without blocking the response.
     // Scheduled via `after()` so the serverless invocation stays alive until
     // the crawl (and the scoring it chains into) actually finishes — a bare
