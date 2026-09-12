@@ -164,9 +164,32 @@ export {
 } from '@/lib/default-parameter-sets'
 
 // -----------------------------------------------------------------------
+// LoadDefaultParametersError
+// Thrown when the category's current parameters can't be cleared because
+// AI/jury scores still reference them (Prisma P2003).
+// -----------------------------------------------------------------------
+export class LoadDefaultParametersError extends Error {
+  readonly code = 'PARAMETERS_HAVE_SCORES'
+  constructor(categoryId: string) {
+    super(
+      `Cannot load a template into category "${categoryId}": existing AI/jury scores reference its current parameters. Remove those scores first, or add parameters individually via "Add Parameter" instead of loading a template.`,
+    )
+    this.name = 'LoadDefaultParametersError'
+  }
+}
+
+// -----------------------------------------------------------------------
 // loadDefaultParameters
-// Seeds the category with the default parameter set (5 parameters totalling
-// 100% weight).
+// Replaces the category's parameters with the default set (5 parameters
+// totalling 100% weight).
+//
+// Replaces rather than appends: an earlier version only added rows, so
+// clicking "Load Default Template" more than once (or once after removing
+// rows in the builder's unsaved draft, which never touched the database)
+// piled up 10, 15, ... parameters and pushed the weight total to 200%, 300%,
+// etc. Deleting first makes the button idempotent — it always leaves the
+// category at exactly the template's 100%, matching what "load a template"
+// actually means to an admin.
 // -----------------------------------------------------------------------
 export async function loadDefaultParameters(
   categoryId: string,
@@ -174,8 +197,35 @@ export async function loadDefaultParameters(
 ) {
   const defaults = getDefaultParameterSet(set)
 
-  return db.parameter.createMany({
-    data: defaults.map((p) => ({ ...p, categoryId })),
-    skipDuplicates: true,
-  })
+  try {
+    // A single `deleteMany`, not one `delete` per row: it always compiles to
+    // one plain `DELETE ... WHERE` statement regardless of how many rows
+    // match, so — unlike `createMany` — it never needs the transaction that
+    // `PrismaNeonHTTP` (lib/db.ts) can't run.
+    await db.parameter.deleteMany({ where: { categoryId } })
+  } catch (err) {
+    if (
+      err instanceof Prisma.PrismaClientKnownRequestError &&
+      err.code === 'P2003'
+    ) {
+      throw new LoadDefaultParametersError(categoryId)
+    }
+    throw err
+  }
+
+  /**
+   * Not `createMany`: the Neon HTTP driver adapter (`PrismaNeonHTTP` in
+   * lib/db.ts) has no persistent connection to hold a transaction open on,
+   * so its `startTransaction()` unconditionally rejects with "Transactions
+   * are not supported in HTTP mode" — and Prisma routes `createMany` through
+   * exactly that, regardless of `skipDuplicates`. Every "Load Default
+   * Template" click failed with that error until this was split into one
+   * `create` per row: each is a single plain INSERT, so none of them needs a
+   * transaction. Run in parallel since the writes are independent (distinct
+   * rows, `orderIndex` is baked into the template data rather than derived
+   * from write order).
+   */
+  return Promise.all(
+    defaults.map((p) => db.parameter.create({ data: { ...p, categoryId } })),
+  )
 }

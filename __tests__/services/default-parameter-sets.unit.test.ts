@@ -13,7 +13,13 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 vi.mock('@/lib/db', () => {
   const db = {
     parameter: {
-      createMany: vi.fn(),
+      // `loadDefaultParameters` clears the category's existing parameters
+      // with `deleteMany` (one plain DELETE statement, safe under the Neon
+      // HTTP driver adapter) before calling `create` once per default row
+      // (not `createMany`) — see the comment in category.service.ts for why
+      // `createMany` can't run under that adapter.
+      deleteMany: vi.fn(),
+      create: vi.fn(),
     },
   }
   return { db, prisma: db }
@@ -29,6 +35,7 @@ vi.mock('next/cache', () => ({
   revalidatePath: vi.fn(),
 }))
 
+import { Prisma } from '@prisma/client'
 import { db } from '@/lib/db'
 import { auth } from '@/lib/auth/config'
 import {
@@ -37,25 +44,38 @@ import {
   getDefaultParameterSet,
   isDefaultParameterSet,
   loadDefaultParameters,
+  LoadDefaultParametersError,
   type DefaultParameterSet,
 } from '@/lib/services/category.service'
 import { loadDefaultParametersAction } from '@/actions/parameter.actions'
 
-const mockCreateMany = vi.mocked(db.parameter.createMany)
+const mockDeleteMany = vi.mocked(db.parameter.deleteMany)
+const mockCreate = vi.mocked(db.parameter.create)
 const mockAuth = vi.mocked(auth) as unknown as ReturnType<typeof vi.fn>
 
-/** The `data` array handed to the single `createMany` call. */
-function seededParameters(): Array<Record<string, unknown>> {
-  expect(mockCreateMany).toHaveBeenCalledOnce()
-  const args = mockCreateMany.mock.calls[0][0] as {
-    data: Array<Record<string, unknown>>
-  }
-  return args.data
+/** A P2003 error shaped like the one Prisma throws on a FK constraint violation. */
+function foreignKeyError(): Prisma.PrismaClientKnownRequestError {
+  return new Prisma.PrismaClientKnownRequestError(
+    'Foreign key constraint failed on the field: `parameterId`',
+    { code: 'P2003', clientVersion: 'test' },
+  )
 }
+
+/** The `data` object from every individual `create` call, in call order. */
+function seededParameters(): Array<Record<string, unknown>> {
+  return mockCreate.mock.calls.map(
+    (call) => (call[0] as { data: Record<string, unknown> }).data,
+  )
+}
+
+/** Echoes back `args.data` as the "created" row — enough for these tests, which only inspect what was passed to `create`. */
+const fakeCreate = (async (args: unknown) =>
+  (args as { data: unknown }).data) as unknown as typeof db.parameter.create
 
 beforeEach(() => {
   vi.clearAllMocks()
-  mockCreateMany.mockResolvedValue({ count: 5 } as never)
+  mockDeleteMany.mockResolvedValue({ count: 0 })
+  mockCreate.mockImplementation(fakeCreate)
   mockAuth.mockResolvedValue({ user: { role: 'ADMIN' } })
 })
 
@@ -124,7 +144,7 @@ describe('loadDefaultParameters — HTML set', () => {
     const defaultData = seededParameters()
 
     vi.clearAllMocks()
-    mockCreateMany.mockResolvedValue({ count: 5 } as never)
+    mockCreate.mockImplementation(fakeCreate)
 
     await loadDefaultParameters('cat_explicit', 'HTML')
     const explicitData = seededParameters()
@@ -132,6 +152,46 @@ describe('loadDefaultParameters — HTML set', () => {
     expect(defaultData.map((p) => p.name)).toEqual(
       explicitData.map((p) => p.name),
     )
+  })
+})
+
+describe('loadDefaultParameters — replaces rather than appends', () => {
+  it('clears the category before seeding, so re-loading always lands on exactly 100%', async () => {
+    await loadDefaultParameters('cat_replace', 'HTML')
+
+    expect(mockDeleteMany).toHaveBeenCalledOnce()
+    expect(mockDeleteMany).toHaveBeenCalledWith({
+      where: { categoryId: 'cat_replace' },
+    })
+    // The delete must happen before any create, or a re-load would still
+    // end up appending on top of rows the delete was supposed to clear.
+    const deleteOrder = mockDeleteMany.mock.invocationCallOrder[0]
+    for (const createCall of mockCreate.mock.invocationCallOrder) {
+      expect(createCall).toBeGreaterThan(deleteOrder)
+    }
+    expect(seededParameters()).toHaveLength(5)
+  })
+
+  it('surfaces a clear error instead of a raw Prisma exception when scores block the delete', async () => {
+    mockDeleteMany.mockRejectedValue(foreignKeyError())
+
+    await expect(loadDefaultParameters('cat_scored', 'HTML')).rejects.toThrow(
+      LoadDefaultParametersError,
+    )
+    await expect(
+      loadDefaultParameters('cat_scored', 'HTML'),
+    ).rejects.toThrow(/existing AI\/jury scores reference/)
+    // The failed delete must not be followed by a create — half-replacing
+    // would leave the category in a worse state than before the click.
+    expect(mockCreate).not.toHaveBeenCalled()
+  })
+
+  it('lets an unrelated database error propagate as-is', async () => {
+    mockDeleteMany.mockRejectedValue(new Error('connection reset'))
+
+    await expect(
+      loadDefaultParameters('cat_broken', 'HTML'),
+    ).rejects.toThrow('connection reset')
   })
 })
 
@@ -153,7 +213,8 @@ describe('unknown set names are rejected', () => {
         loadDefaultParameters('cat_bad', value as unknown as DefaultParameterSet),
       ).rejects.toThrow(/Unknown default parameter set/)
     }
-    expect(mockCreateMany).not.toHaveBeenCalled()
+    expect(mockDeleteMany).not.toHaveBeenCalled()
+    expect(mockCreate).not.toHaveBeenCalled()
   })
 
   it('loadDefaultParametersAction returns a failure instead of seeding', async () => {
@@ -165,7 +226,8 @@ describe('unknown set names are rejected', () => {
     expect(result.success).toBe(false)
     expect(result.message).toMatch(/Unknown default parameter set/)
     expect(result.message).toContain('HTML')
-    expect(mockCreateMany).not.toHaveBeenCalled()
+    expect(mockDeleteMany).not.toHaveBeenCalled()
+    expect(mockCreate).not.toHaveBeenCalled()
   })
 })
 
@@ -199,6 +261,7 @@ describe('loadDefaultParametersAction', () => {
 
     expect(result.success).toBe(false)
     expect(result.message).toMatch(/Forbidden/)
-    expect(mockCreateMany).not.toHaveBeenCalled()
+    expect(mockDeleteMany).not.toHaveBeenCalled()
+    expect(mockCreate).not.toHaveBeenCalled()
   })
 })

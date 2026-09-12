@@ -448,7 +448,12 @@ export class ScorerService {
         structure,
       }
 
-    // 3. Fetch other projects' metadata in the same category as context
+    // 3. Fetch other projects' metadata in the same category as context.
+    // Ordered explicitly: without an `orderBy`, Postgres is free to return
+    // these rows in a different order on every call, which reshuffles the
+    // "Other Projects" comparison list in the prompt between one scoring run
+    // and the next — one more source of a re-score landing on a different
+    // number for evidence that hasn't changed.
     const siblingMetadataRows = await db.crawlMetadata.findMany({
       where: {
         project: {
@@ -456,6 +461,7 @@ export class ScorerService {
           id: { not: projectId },
         },
       },
+      orderBy: { projectId: 'asc' },
     })
 
     // `structure` is carried across so the HTML prompt's comparison section can
@@ -588,6 +594,18 @@ export class ScorerService {
 
     const model = genAI.getGenerativeModel({
       model: process.env.GEMINI_MODEL_ID ?? 'gemini-flash-lite-latest',
+      // Scoring is a judgment task, not a creative one — the same evidence
+      // should produce the same score whether it's judged once or ten times.
+      // Left at the API default (commonly 1.0 for this model), the same
+      // prompt visibly swings between a low and a high score on repeated
+      // "Retry Score" calls, purely from sampling randomness, not from any
+      // change in the project. `temperature: 0` makes generation greedy
+      // (always pick the highest-probability token), which removes that
+      // source of variance; it does not guarantee bit-for-bit identical
+      // output across calls (serving-infra floating point non-determinism is
+      // a separate, much smaller effect), but it eliminates the swings this
+      // was actually causing.
+      generationConfig: { temperature: 0 },
     })
 
     const result = await model.generateContent(prompt)

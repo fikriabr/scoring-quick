@@ -79,8 +79,8 @@ export default function ParameterBuilder({
   // Which template the Load button will seed.
   const [selectedSet, setSelectedSet] =
     useState<DefaultParameterSet>('HTML')
-  // Set to true once the admin has been warned that loading appends rows to a
-  // category that already has parameters; reset on every other interaction.
+  // Set to true once the admin has been warned that loading replaces the
+  // category's saved parameters; reset on every other interaction.
   const [awaitingLoadConfirm, setAwaitingLoadConfirm] = useState(false)
 
   const selectedTemplate = DEFAULT_PARAMETER_SETS[selectedSet]
@@ -126,12 +126,19 @@ export default function ParameterBuilder({
     [],
   )
 
-  // Seeding is additive on the server (`createMany` with `skipDuplicates`), so
-  // loading a template into a category that already has parameters appends rows
-  // and can push the weight total well past 100%. Warn first, load on the
-  // second click. Requirements: 6.2, 6.3
+  // Loading a template REPLACES the category's saved parameters on the
+  // server — it deletes the current rows and inserts the template's, so the
+  // weight total always lands on exactly 100% instead of piling up (100%,
+  // then 200%, then 300%, ...) the way an additive load used to.
+  //
+  // The check below is against `initialParameters` (what the server actually
+  // has), not the local `parameters` draft: "Remove" only edits the
+  // in-browser draft until "Save Parameters" is clicked, so an admin who
+  // removed rows without saving and then loaded a template would otherwise
+  // see no warning right before their real, still-saved server-side
+  // parameters were silently replaced. Requirements: 6.2, 6.3
   const handleLoadDefaults = () => {
-    if (parameters.length > 0 && !awaitingLoadConfirm) {
+    if (initialParameters.length > 0 && !awaitingLoadConfirm) {
       setError(null)
       setSuccessMessage(null)
       setAwaitingLoadConfirm(true)
@@ -312,19 +319,18 @@ export default function ParameterBuilder({
         {selectedTemplate.map((p) => `${p.name} (${p.weight}%)`).join(', ')}
       </p>
 
-      {/* Additive-load warning — shown when the category already has
+      {/* Replace-load warning — shown when the category already has saved
           parameters. Requirements: 6.2, 6.3 */}
       {awaitingLoadConfirm && (
         <div className="mb-4 p-3 bg-yellow-50 border border-yellow-200 rounded text-yellow-800 text-sm">
           <p>
-            This category already has {parameters.length} parameter
-            {parameters.length === 1 ? '' : 's'}. Loading the{' '}
+            This category already has {initialParameters.length} saved
+            parameter{initialParameters.length === 1 ? '' : 's'}. Loading the{' '}
             {DEFAULT_PARAMETER_SET_LABELS[selectedSet]} template{' '}
-            <strong>adds</strong> its {selectedTemplate.length} parameters
-            instead of replacing the existing ones, including any duplicate
-            names. Expect a weight total above 100% that you will have to
-            rebalance before saving. Remove the parameters you do not want first
-            if you meant to swap templates.
+            <strong>replaces</strong> them with its {selectedTemplate.length}{' '}
+            parameters — any unsaved edits you have made below are discarded
+            too. This can fail if AI or jury scores already reference the
+            current parameters.
           </p>
           <div className="mt-2 flex gap-2">
             <button
@@ -332,7 +338,7 @@ export default function ParameterBuilder({
               className="px-3 py-1.5 bg-yellow-600 text-white rounded hover:bg-yellow-700 text-sm"
               disabled={isPending}
             >
-              Load anyway
+              Replace anyway
             </button>
             <button
               onClick={() => setAwaitingLoadConfirm(false)}
