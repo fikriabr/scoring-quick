@@ -1,7 +1,7 @@
 // components/ProcessingBanner.tsx
 // Live status banner for the project detail page. Crawling and AI scoring
 // both run in the background after a submission — this polls
-// `GET /api/submissions/[id]` every 10 seconds while either is still
+// `GET /api/submissions/[id]` every 1 second while either is still
 // PENDING/PROCESSING, so an admin watching the page sees the pipeline
 // actually moving instead of a static badge that looks stuck.
 
@@ -11,8 +11,9 @@ import { useEffect, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 
 const ACTIVE_STATUSES = new Set(['PENDING', 'PROCESSING'])
-const POLL_INTERVAL_MS = 10_000
-const TICK_INTERVAL_MS = 1_000
+// Poll and elapsed-time tick share one cadence now, so a single interval
+// drives both.
+const POLL_INTERVAL_MS = 1_000
 
 interface ProcessingBannerProps {
   projectId: string
@@ -83,11 +84,9 @@ export default function ProcessingBanner({
   useEffect(() => {
     if (!isActive) return
 
-    const tick = setInterval(() => {
-      setElapsedSeconds((s) => s + 1)
-    }, TICK_INTERVAL_MS)
-
     const poll = setInterval(async () => {
+      setElapsedSeconds((s) => s + 1)
+
       try {
         const res = await fetch(`/api/submissions/${projectId}`, {
           cache: 'no-store',
@@ -119,10 +118,7 @@ export default function ProcessingBanner({
       }
     }, POLL_INTERVAL_MS)
 
-    return () => {
-      clearInterval(tick)
-      clearInterval(poll)
-    }
+    return () => clearInterval(poll)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isActive, projectId])
 
@@ -153,7 +149,7 @@ export default function ProcessingBanner({
 
       <div className="mt-2 flex flex-wrap items-center justify-between gap-2 text-xs text-blue-700">
         <span>
-          Elapsed: {elapsedSeconds}s · checking again every 10s
+          Elapsed: {elapsedSeconds}s · checking again every 1s
         </span>
         {crawlError && (
           <span className="text-amber-700">Last crawl error: {crawlError}</span>

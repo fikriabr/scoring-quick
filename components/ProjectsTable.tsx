@@ -32,7 +32,7 @@ export type SerializedProject = {
 const COLLAPSED_ROWS = 5
 
 const ACTIVE_STATUSES = new Set(['PENDING', 'PROCESSING'])
-const AUTO_REFRESH_INTERVAL_MS = 10_000
+const AUTO_REFRESH_INTERVAL_MS = 5 * 60_000
 
 function isProjectProcessing(project: SerializedProject): boolean {
   return (
@@ -59,8 +59,11 @@ export default function ProjectsTable({
   const hiddenCount = projects.length - COLLAPSED_ROWS
 
   // While any project in this section is still crawling/scoring, refresh the
-  // page's server data every 10s so the status badges below move on their
-  // own instead of looking stuck until a manual reload.
+  // page's server data every 5 minutes so the status badges below move on
+  // their own instead of looking stuck until a manual reload. Deliberately
+  // coarser than ProcessingBanner's 1s poll — this refresh re-fetches the
+  // whole list from the database, so a tight interval would scale badly with
+  // many admins on this page at once.
   const isProcessing = projects.some(isProjectProcessing)
 
   useEffect(() => {
@@ -77,7 +80,7 @@ export default function ProjectsTable({
             className="h-1.5 w-1.5 shrink-0 rounded-full bg-blue-500 animate-pulse"
             aria-hidden="true"
           />
-          Some submissions are still crawling/scoring — refreshing every 10s.
+          Some submissions are still crawling/scoring — refreshing every 5 minutes.
         </div>
       )}
       <div className="overflow-x-auto">
