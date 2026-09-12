@@ -5,7 +5,7 @@ import type { Metadata } from 'next'
 import './globals.css'
 
 export const metadata: Metadata = {
-  title: 'Scoring Quick',
+  title: 'AI FOR ALL HACKATHON',
   description: 'Web-based judging system for HTML web projects',
 }
 

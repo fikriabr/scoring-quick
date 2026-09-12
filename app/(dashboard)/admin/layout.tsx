@@ -33,7 +33,9 @@ export default async function AdminLayout({
           <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-blue-600 text-sm text-white">
             🎯
           </div>
-          <span className="text-lg font-bold text-white">Scoring Quick</span>
+          <span className="text-sm font-bold text-white">
+            AI FOR ALL HACKATHON
+          </span>
         </div>
 
         {/* Navigation */}
@@ -94,7 +96,9 @@ export default async function AdminLayout({
         <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-blue-600 text-sm text-white">
           🎯
         </div>
-        <span className="text-lg font-bold text-gray-900">Scoring Quick</span>
+        <span className="text-lg font-bold text-gray-900">
+          AI FOR ALL HACKATHON
+        </span>
         <div className="ml-auto">
           <SignOutButton variant="compact" />
         </div>
