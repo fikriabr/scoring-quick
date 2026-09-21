@@ -9,16 +9,38 @@
  *   exactly 100% (within floating-point tolerance of ±0.001). Any
  *   configuration with a total differing from 100% SHALL be rejected with
  *   an error message indicating the discrepancy.
+ *
+ * Weights are now per track (IDEA / HTML): each track must total 100%. The
+ * property tests below exercise the HTML track (the default track) with a
+ * fixed, valid IDEA track alongside it via `parseHtmlTrack`; the per-track
+ * rules themselves are pinned in the "two-track" block at the end.
  */
 
 import { describe, it, expect } from 'vitest'
 import * as fc from 'fast-check'
 import { ParameterSetSchema } from '../../lib/validators/schemas'
-import { ScoringMode } from '@prisma/client'
+import { ScoringMode, ScoringTrack } from '@prisma/client'
 
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
+
+/** A complete, valid IDEA track: one parameter carrying all 100%. */
+const IDEA_TRACK_PARAM = {
+  name: 'Idea Parameter',
+  description: null,
+  weight: 100,
+  minScore: 0,
+  maxScore: 100,
+  scoringMode: ScoringMode.AUTO,
+  track: ScoringTrack.IDEA,
+  orderIndex: 99,
+}
+
+/** Validate `params` as the HTML track of a set whose IDEA track is valid. */
+function parseHtmlTrack(params: unknown[]) {
+  return ParameterSetSchema.safeParse([...params, IDEA_TRACK_PARAM])
+}
 
 /**
  * Build a valid parameter item with a given weight.
@@ -146,7 +168,7 @@ describe('Property 4: Parameter Weight Sum Invariant', () => {
           // Guard: only test inputs that truly satisfy the invariant
           fc.pre(Math.abs(totalWeight - 100) <= 0.001)
 
-          const result = ParameterSetSchema.safeParse(params)
+          const result = parseHtmlTrack(params)
           expect(result.success).toBe(true)
         },
       ),
@@ -174,7 +196,7 @@ describe('Property 4: Parameter Weight Sum Invariant', () => {
           // Guard: all weights individually valid (>0, <=100)
           fc.pre(params.every((p) => p.weight > 0 && p.weight <= 100))
 
-          const result = ParameterSetSchema.safeParse(params)
+          const result = parseHtmlTrack(params)
           expect(result.success).toBe(false)
         },
       ),
@@ -200,7 +222,7 @@ describe('Property 4: Parameter Weight Sum Invariant', () => {
           fc.pre(Math.abs(totalWeight - 100) > 0.001)
           fc.pre(params.every((p) => p.weight > 0 && p.weight <= 100))
 
-          const result = ParameterSetSchema.safeParse(params)
+          const result = parseHtmlTrack(params)
           expect(result.success).toBe(false)
           if (!result.success) {
             // Zod v4 uses `.issues` instead of `.errors`
@@ -222,12 +244,12 @@ describe('Property 4: Parameter Weight Sum Invariant', () => {
 
 describe('Parameter Weight Sum Invariant — edge cases', () => {
   it('single parameter with weight=100 is accepted', () => {
-    const result = ParameterSetSchema.safeParse([makeParam(100)])
+    const result = parseHtmlTrack([makeParam(100)])
     expect(result.success).toBe(true)
   })
 
   it('two parameters summing to exactly 100 are accepted', () => {
-    const result = ParameterSetSchema.safeParse([makeParam(60), makeParam(40)])
+    const result = parseHtmlTrack([makeParam(60), makeParam(40)])
     expect(result.success).toBe(true)
   })
 
@@ -239,29 +261,29 @@ describe('Parameter Weight Sum Invariant — edge cases', () => {
       makeNamedParam('User Experience & Presentation', 20),
       makeNamedParam('Impact & Scalability', 15),
     ]
-    const result = ParameterSetSchema.safeParse(params)
+    const result = parseHtmlTrack(params)
     expect(result.success).toBe(true)
   })
 
   it('weights within ±0.001 tolerance of 100 are accepted', () => {
     // 99.9995 — within tolerance (|99.9995 - 100| = 0.0005 < 0.001)
-    const result = ParameterSetSchema.safeParse([makeParam(99.9995)])
+    const result = parseHtmlTrack([makeParam(99.9995)])
     expect(result.success).toBe(true)
   })
 
   it('weights exceeding the ±0.001 tolerance are rejected', () => {
     // 99.998 — |99.998 - 100| = 0.002 > 0.001 — must fail
-    const result = ParameterSetSchema.safeParse([makeParam(99.998)])
+    const result = parseHtmlTrack([makeParam(99.998)])
     expect(result.success).toBe(false)
   })
 
   it('empty array is rejected (at least one parameter required)', () => {
-    const result = ParameterSetSchema.safeParse([])
+    const result = parseHtmlTrack([])
     expect(result.success).toBe(false)
   })
 
   it('three parameters summing to 99 are rejected', () => {
-    const result = ParameterSetSchema.safeParse([
+    const result = parseHtmlTrack([
       makeParam(33),
       makeParam(33),
       makeParam(33),
@@ -270,7 +292,7 @@ describe('Parameter Weight Sum Invariant — edge cases', () => {
   })
 
   it('two parameters summing to 101 are rejected', () => {
-    const result = ParameterSetSchema.safeParse([makeParam(51), makeParam(50)])
+    const result = parseHtmlTrack([makeParam(51), makeParam(50)])
     expect(result.success).toBe(false)
   })
 
@@ -295,7 +317,53 @@ describe('Parameter Weight Sum Invariant — edge cases', () => {
         orderIndex: 1,
       },
     ]
-    const result = ParameterSetSchema.safeParse(params)
+    const result = parseHtmlTrack(params)
     expect(result.success).toBe(true)
+  })
+})
+
+describe('Two-track weight invariant (IDEA + HTML)', () => {
+  const param = (track: ScoringTrack, weight: number) => ({
+    name: `${track} ${weight}`,
+    description: null,
+    weight,
+    minScore: 0,
+    maxScore: 100,
+    scoringMode: ScoringMode.AUTO,
+    track,
+    orderIndex: 0,
+  })
+
+  it('accepts a set where each track totals 100% independently', () => {
+    const result = ParameterSetSchema.safeParse([
+      param(ScoringTrack.IDEA, 60),
+      param(ScoringTrack.IDEA, 40),
+      param(ScoringTrack.HTML, 30),
+      param(ScoringTrack.HTML, 70),
+    ])
+    expect(result.success).toBe(true)
+  })
+
+  it('rejects a set whose weights total 100% overall but not per track', () => {
+    const result = ParameterSetSchema.safeParse([
+      param(ScoringTrack.IDEA, 60),
+      param(ScoringTrack.HTML, 40),
+    ])
+    expect(result.success).toBe(false)
+  })
+
+  it('rejects a set with no IDEA parameters — both files are scored', () => {
+    const result = ParameterSetSchema.safeParse([param(ScoringTrack.HTML, 100)])
+    expect(result.success).toBe(false)
+    expect(result.error?.issues[0]?.message).toMatch(/IDEA track needs at least one parameter/)
+  })
+
+  it('names the offending track in the error message', () => {
+    const result = ParameterSetSchema.safeParse([
+      param(ScoringTrack.IDEA, 90),
+      param(ScoringTrack.HTML, 100),
+    ])
+    expect(result.success).toBe(false)
+    expect(result.error?.issues[0]?.message).toMatch(/Total IDEA parameter weight must equal 100%/)
   })
 })

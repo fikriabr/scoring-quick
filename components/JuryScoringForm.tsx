@@ -7,6 +7,7 @@
 'use client'
 
 import { useState, useCallback } from 'react'
+import { TRACK_LABELS, type ScoringTrack } from '@/lib/scoring/tracks'
 
 interface ParameterData {
   id: string
@@ -19,6 +20,9 @@ interface ParameterData {
   aiReasoning: string | null
   juryScore: number | null
   juryComment: string | null
+  track: ScoringTrack
+  /** Critic verdict on the AI score: false = still biased after last round. */
+  aiCriticApproved: boolean | null
 }
 
 interface JuryScoringFormProps {
@@ -219,17 +223,21 @@ export default function JuryScoringForm({
     <div className="space-y-6">
       <h2 className="text-lg font-semibold">Scoring Per Parameter</h2>
 
-      {parameters.map((param) => {
+      {parameters.map((param, index) => {
         const state = states[param.id]
+        const startsTrack = index === 0 || parameters[index - 1].track !== param.track
         const scoreValue = parseFloat(state.score)
         const showComment =
           !isNaN(scoreValue) && isCommentRequired(param, scoreValue)
 
         return (
-          <div
-            key={param.id}
-            className="p-4 bg-white rounded shadow border border-gray-200"
-          >
+          <div key={param.id} className="space-y-3">
+          {startsTrack && (
+            <h3 className="pt-2 text-base font-semibold text-gray-800 border-b border-gray-200 pb-1">
+              Track: {TRACK_LABELS[param.track]}
+            </h3>
+          )}
+          <div className="p-4 bg-white rounded shadow border border-gray-200">
             {/* Parameter header */}
             <div className="flex items-start justify-between mb-3">
               <div>
@@ -262,8 +270,14 @@ export default function JuryScoringForm({
                   </span>
                 </div>
                 {param.aiReasoning && (
-                  <p className="text-sm text-blue-700 mt-1">
+                  <p className="text-sm text-blue-700 mt-1 whitespace-pre-line">
                     {param.aiReasoning}
+                  </p>
+                )}
+                {param.aiCriticApproved === false && (
+                  <p className="mt-2 text-xs font-medium text-amber-700">
+                    The critic agent still found bias in this AI score after the
+                    last re-evaluation — please review it carefully.
                   </p>
                 )}
               </div>
@@ -404,6 +418,7 @@ export default function JuryScoringForm({
                 {state.success}
               </div>
             )}
+          </div>
           </div>
         )
       })}

@@ -82,6 +82,8 @@ function toRankedProjects(
     crawlStatus: import('@prisma/client').CrawlStatus
     scoreStatus: import('@prisma/client').ScoreStatus
     finalScore: number | null
+    ideaScore?: number | null
+    htmlScore?: number | null
     createdAt: Date
     updatedAt: Date
     crawlError: string | null
@@ -105,6 +107,8 @@ function toRankedProjects(
     crawlStatus: project.crawlStatus,
     scoreStatus: project.scoreStatus,
     finalScore: project.finalScore,
+    ideaScore: project.ideaScore ?? null,
+    htmlScore: project.htmlScore ?? null,
     createdAt: project.createdAt,
     aiScores: project.aiScores.map((s) => ({
       parameterId: s.parameterId,

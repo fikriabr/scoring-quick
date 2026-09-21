@@ -23,6 +23,7 @@ describe('SubmissionSchema — URL optional, Source Code required in its absence
   const base = {
     participantName: 'Test Participant',
     categoryId: 'cat-1',
+    ideaDoc: '# Idea',
   }
 
   it('accepts a URL with no Source Code', () => {
@@ -76,6 +77,7 @@ describe('CsvRowRawSchema — same URL-or-Source-Code rule per row', () => {
   const base = {
     participant_name: 'Test Participant',
     categoryId: 'cat-1',
+    idea_doc: '# Idea',
   }
 
   it('accepts a row with url but no source_code', () => {
@@ -98,5 +100,43 @@ describe('CsvRowRawSchema — same URL-or-Source-Code rule per row', () => {
 
   it('rejects a row with neither url nor source_code', () => {
     expect(() => CsvRowRawSchema.parse({ ...base })).toThrow(ZodError)
+  })
+})
+
+describe('Idea document (markdown) is required on every submission', () => {
+  const html = { url: 'https://example.com/project', sourceCode: '<html></html>' }
+
+  it('SubmissionSchema rejects a missing idea document, on the ideaDoc path', () => {
+    const result = SubmissionSchema.safeParse({
+      ...html,
+      participantName: 'P',
+      categoryId: 'cat-1',
+    })
+    expect(result.success).toBe(false)
+    expect(result.error?.issues.some((i) => i.path.join('.') === 'ideaDoc')).toBe(true)
+  })
+
+  it('SubmissionSchema rejects a whitespace-only idea document', () => {
+    const result = SubmissionSchema.safeParse({
+      ...html,
+      participantName: 'P',
+      categoryId: 'cat-1',
+      ideaDoc: '   \n  ',
+    })
+    expect(result.success).toBe(false)
+  })
+
+  it('CsvRowRawSchema reads the idea_doc column and requires it', () => {
+    const ok = CsvRowRawSchema.parse({
+      participant_name: 'P',
+      categoryId: 'cat-1',
+      url: html.url,
+      idea_doc: '# My idea',
+    })
+    expect(ok.ideaDoc).toBe('# My idea')
+
+    expect(() =>
+      CsvRowRawSchema.parse({ participant_name: 'P', categoryId: 'cat-1', url: html.url }),
+    ).toThrow(ZodError)
   })
 })

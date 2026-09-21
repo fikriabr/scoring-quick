@@ -117,6 +117,10 @@ describe('deleteCategory — requirements 1.5', () => {
       description: null,
       isPublished: false,
       publicToken: null,
+      ideaWeight: 60,
+      htmlWeight: 40,
+      criticEnabled: true,
+      maxCriticRounds: 2,
       createdAt: new Date(),
       updatedAt: new Date(),
     }
@@ -147,6 +151,10 @@ describe('deleteCategory — requirements 1.5', () => {
       description: 'A category to test the return value',
       isPublished: false,
       publicToken: null,
+      ideaWeight: 60,
+      htmlWeight: 40,
+      criticEnabled: true,
+      maxCriticRounds: 2,
       createdAt: new Date('2024-01-01'),
       updatedAt: new Date('2024-01-02'),
     }

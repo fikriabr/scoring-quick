@@ -85,11 +85,20 @@ describe('lib/default-parameter-sets.ts stays importable from the browser', () =
   // Comments explain *why* the module avoids these imports, so only real import
   // statements are inspected.
   const importLines = source
-    .split('\n')
+    .split(/\r?\n/)
     .filter((line) => /^\s*import\b/.test(line))
 
-  it('imports nothing at all, server-only or otherwise', () => {
-    expect(importLines).toEqual([])
+  // The only import allowed is the track module, which is itself neutral
+  // (no db, no Prisma values, no Node built-ins) — checked the same way.
+  it('imports nothing but the neutral track module', () => {
+    for (const line of importLines) {
+      expect(line).toMatch(/from '@\/lib\/scoring\/tracks'$/)
+    }
+    const tracksSource = readFileSync(
+      fileURLToPath(new URL('../lib/scoring/tracks.ts', import.meta.url)),
+      'utf8',
+    )
+    expect(tracksSource.split(/\r?\n/).filter((l) => /^\s*import\b/.test(l))).toEqual([])
   })
 
   it('is the single source the service re-exports', () => {

@@ -12,7 +12,11 @@ import { useRouter } from 'next/navigation'
 import { validateProjectUrl } from '@/lib/validators/url-rules'
 // Prisma-free module, so the shared limit can be read without pulling the
 // Prisma runtime (which `@/lib/validators/schemas` does) into the bundle.
-import { MAX_SOURCE_CODE_LENGTH } from '@/lib/validators/source-code-rules'
+import {
+  IDEA_DOC_REQUIRED_MESSAGE,
+  MAX_IDEA_DOC_LENGTH,
+  MAX_SOURCE_CODE_LENGTH,
+} from '@/lib/validators/source-code-rules'
 
 interface Category {
   id: string
@@ -37,7 +41,29 @@ const FORM_COPY = {
   urlOrSourceCodeError:
     'Provide a Project URL or upload/paste Source Code — at least one is required.',
   successMessage:
-    'Project submitted successfully. Fetching the page, then AI scoring starts.',
+    'Project submitted successfully. Fetching the page, then AI scoring of the idea and the HTML starts.',
+  ideaDocPlaceholder: '# Project idea\n\nProblem, target users, proposed solution, feasibility, impact...',
+  ideaDocHelp:
+    'Required. Scored on the Idea parameters only — the idea evaluator never sees the HTML, and the HTML evaluator never sees this document.',
+}
+
+/**
+ * Reads a text file picked in an <input type="file">, enforcing the length
+ * cap on both the byte size (cheap, before reading) and the decoded text.
+ */
+async function readTextFile(file: File, maxLength: number): Promise<{ text: string } | { error: string }> {
+  if (file.size > maxLength) {
+    return { error: `File is too large — must not exceed ${maxLength.toLocaleString()} characters.` }
+  }
+  try {
+    const text = await file.text()
+    if (text.length > maxLength) {
+      return { error: `File content must not exceed ${maxLength.toLocaleString()} characters.` }
+    }
+    return { text }
+  } catch {
+    return { error: 'Could not read the selected file. Please try again.' }
+  }
 }
 
 interface SubmissionFormProps {
@@ -111,6 +137,9 @@ function SingleSubmissionForm({
   const [sourceCode, setSourceCode] = useState('')
   const [fileName, setFileName] = useState<string | null>(null)
   const [fileError, setFileError] = useState<string | null>(null)
+  const [ideaDoc, setIdeaDoc] = useState('')
+  const [ideaFileName, setIdeaFileName] = useState<string | null>(null)
+  const [ideaFileError, setIdeaFileError] = useState<string | null>(null)
   // Tracked purely so the Source Code label can flip between "optional" and
   // "required" live as the admin fills in (or clears) the URL field.
   const [urlValue, setUrlValue] = useState('')
@@ -124,28 +153,30 @@ function SingleSubmissionForm({
     if (!file) return
 
     setFileError(null)
-
-    if (file.size > MAX_SOURCE_CODE_LENGTH) {
-      setFileError(
-        `File is too large — must not exceed ${MAX_SOURCE_CODE_LENGTH.toLocaleString()} characters.`,
-      )
+    const result = await readTextFile(file, MAX_SOURCE_CODE_LENGTH)
+    if ('error' in result) {
+      setFileError(result.error)
       return
     }
+    setSourceCode(result.text)
+    setFileName(file.name)
+    setErrors((prev) => ({ ...prev, sourceCode: '' }))
+  }
 
-    try {
-      const text = await file.text()
-      if (text.length > MAX_SOURCE_CODE_LENGTH) {
-        setFileError(
-          `File content must not exceed ${MAX_SOURCE_CODE_LENGTH.toLocaleString()} characters.`,
-        )
-        return
-      }
-      setSourceCode(text)
-      setFileName(file.name)
-      setErrors((prev) => ({ ...prev, sourceCode: '' }))
-    } catch {
-      setFileError('Could not read the selected file. Please try again.')
+  async function handleIdeaFileChange(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0]
+    e.target.value = ''
+    if (!file) return
+
+    setIdeaFileError(null)
+    const result = await readTextFile(file, MAX_IDEA_DOC_LENGTH)
+    if ('error' in result) {
+      setIdeaFileError(result.error)
+      return
     }
+    setIdeaDoc(result.text)
+    setIdeaFileName(file.name)
+    setErrors((prev) => ({ ...prev, ideaDoc: '' }))
   }
 
   async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
@@ -166,6 +197,7 @@ function SingleSubmissionForm({
       participantName: (formData.get('participantName') as string).trim(),
       teamName: (formData.get('teamName') as string).trim() || undefined,
       sourceCode: sourceCode.trim() || undefined,
+      ideaDoc: ideaDoc.trim() || undefined,
       categoryId: formData.get('categoryId') as string,
     }
 
@@ -196,6 +228,11 @@ function SingleSubmissionForm({
       payload.sourceCode.length > MAX_SOURCE_CODE_LENGTH
     ) {
       fieldErrors.sourceCode = `Source code must not exceed ${MAX_SOURCE_CODE_LENGTH.toLocaleString()} characters`
+    }
+    if (!payload.ideaDoc) {
+      fieldErrors.ideaDoc = IDEA_DOC_REQUIRED_MESSAGE
+    } else if (payload.ideaDoc.length > MAX_IDEA_DOC_LENGTH) {
+      fieldErrors.ideaDoc = `Idea document must not exceed ${MAX_IDEA_DOC_LENGTH.toLocaleString()} characters`
     }
     if (!payload.categoryId) fieldErrors.categoryId = 'Category is required'
 
@@ -231,6 +268,9 @@ function SingleSubmissionForm({
         setSourceCode('')
         setFileName(null)
         setFileError(null)
+        setIdeaDoc('')
+        setIdeaFileName(null)
+        setIdeaFileError(null)
         setUrlValue('')
         onSuccess()
       } catch {
@@ -351,14 +391,75 @@ function SingleSubmissionForm({
         )}
       </div>
 
-      {/* Source Code field — Project.sourceCode, the scorer's primary
+      {/* Idea document — Project.ideaDoc, the only evidence of the IDEA
+          track. Always required. */}
+      <div>
+        <label
+          htmlFor="ideaDoc"
+          className="block text-sm font-medium text-gray-700 mb-1.5"
+        >
+          Idea Document (Markdown) <span className="text-red-500">*</span>
+        </label>
+
+        <div className="mb-2 flex flex-wrap items-center gap-2">
+          <label
+            htmlFor="ideaDocFile"
+            className="cursor-pointer rounded-lg border border-gray-200 bg-gray-50 px-3 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-100"
+          >
+            Upload .md file...
+          </label>
+          <input
+            id="ideaDocFile"
+            type="file"
+            accept=".md,.markdown,.txt,text/markdown,text/plain"
+            onChange={handleIdeaFileChange}
+            className="hidden"
+          />
+          {ideaFileName && (
+            <span className="text-xs text-gray-500">
+              Loaded from <span className="font-medium">{ideaFileName}</span>
+            </span>
+          )}
+        </div>
+        {ideaFileError && (
+          <p className="mb-1.5 text-sm text-red-600">{ideaFileError}</p>
+        )}
+
+        <textarea
+          id="ideaDoc"
+          name="ideaDoc"
+          rows={8}
+          maxLength={MAX_IDEA_DOC_LENGTH}
+          placeholder={copy.ideaDocPlaceholder}
+          value={ideaDoc}
+          onChange={(e) => {
+            setIdeaDoc(e.target.value)
+            setIdeaFileName(null)
+          }}
+          className={`w-full px-3 py-2.5 rounded-lg border bg-gray-50 font-mono text-xs transition-colors focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 ${
+            errors.ideaDoc ? 'border-red-400' : 'border-gray-200'
+          }`}
+        />
+        {errors.ideaDoc && (
+          <p className="mt-1.5 text-sm text-red-600">{errors.ideaDoc}</p>
+        )}
+        <div className="mt-1.5 flex justify-between gap-4 text-xs text-gray-400">
+          <p>{copy.ideaDocHelp}</p>
+          <p className="shrink-0 tabular-nums">
+            {ideaDoc.length.toLocaleString()} /{' '}
+            {MAX_IDEA_DOC_LENGTH.toLocaleString()}
+          </p>
+        </div>
+      </div>
+
+      {/* Source Code field — Project.sourceCode, the HTML track's primary
           evidence. Required whenever no Project URL is provided above. */}
       <div>
         <label
           htmlFor="sourceCode"
           className="block text-sm font-medium text-gray-700 mb-1.5"
         >
-          Source Code{' '}
+          HTML Source Code{' '}
           {sourceCodeRequired ? (
             <span className="text-red-500">*</span>
           ) : (
@@ -544,7 +645,8 @@ function CsvUploadForm({
           className="w-full px-3 py-2.5 rounded-lg border border-gray-200 bg-gray-50 text-sm transition-colors file:mr-3 file:rounded-md file:border-0 file:bg-blue-50 file:px-3 file:py-1.5 file:text-sm file:font-medium file:text-blue-700 hover:file:bg-blue-100 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
         />
         <p className="mt-1.5 text-xs text-gray-400">
-          CSV columns: <code>participant_name</code> (required),{' '}
+          CSV columns: <code>participant_name</code> and{' '}
+          <code>idea_doc</code> (markdown, required),{' '}
           <code>url</code> and <code>source_code</code> (each optional, but a
           row needs at least one of them), <code>team_name</code> (optional).
           Header casing and spacing don&apos;t matter, and{' '}

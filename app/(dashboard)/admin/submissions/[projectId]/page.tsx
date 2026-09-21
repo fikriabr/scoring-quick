@@ -11,6 +11,8 @@ import { RetryButton } from '@/components/SubmissionForm'
 import SourceCodeEditor from '@/components/SourceCodeEditor'
 import ProcessingBanner from '@/components/ProcessingBanner'
 import DeleteSubmissionButton from '@/components/DeleteSubmissionButton'
+import CriticAuditPanel from '@/components/CriticAuditPanel'
+import { SCORING_TRACKS, TRACK_LABELS } from '@/lib/scoring/tracks'
 
 interface PageProps {
   params: Promise<{ projectId: string }>
@@ -28,12 +30,24 @@ export default async function ProjectDetailPage({ params }: PageProps) {
       metadata: true,
       aiScores: { include: { parameter: true } },
       juryScores: { include: { parameter: true } },
+      evaluationRuns: true,
     },
   })
 
   if (!project) {
     notFound()
   }
+
+  const { category } = project
+  const parameterNames = Object.fromEntries(
+    [...project.aiScores, ...project.juryScores].map((s) => [s.parameterId, s.parameter.name]),
+  )
+  const aiScoresByTrack = SCORING_TRACKS.map((track) => ({
+    track,
+    scores: project.aiScores
+      .filter((s) => s.parameter.track === track)
+      .sort((a, b) => a.parameter.orderIndex - b.parameter.orderIndex),
+  }))
 
   return (
     <div className="space-y-8">
@@ -83,7 +97,7 @@ export default async function ProjectDetailPage({ params }: PageProps) {
               </a>
             ) : (
               <p className="mt-2 text-sm text-gray-400">
-                No URL — evaluated from uploaded Source Code only.
+                No URL — HTML evaluated from uploaded Source Code only.
               </p>
             )}
             <div className="mt-3 flex flex-wrap items-center gap-2 text-xs text-gray-500">
@@ -106,6 +120,22 @@ export default async function ProjectDetailPage({ params }: PageProps) {
             </div>
             <div className="text-3xl font-bold text-gray-900">
               {project.finalScore != null ? project.finalScore.toFixed(2) : '—'}
+            </div>
+            <div className="mt-2 space-y-0.5 text-xs text-gray-500">
+              <div>
+                {TRACK_LABELS.IDEA}:{' '}
+                <span className="font-semibold text-gray-800">
+                  {project.ideaScore != null ? project.ideaScore.toFixed(2) : '—'}
+                </span>{' '}
+                × {category.ideaWeight}%
+              </div>
+              <div>
+                {TRACK_LABELS.HTML}:{' '}
+                <span className="font-semibold text-gray-800">
+                  {project.htmlScore != null ? project.htmlScore.toFixed(2) : '—'}
+                </span>{' '}
+                × {category.htmlWeight}%
+              </div>
             </div>
           </div>
         </div>
@@ -191,67 +221,112 @@ export default async function ProjectDetailPage({ params }: PageProps) {
         </div>
       </section>
 
-      {/* Evidence section — the editor owns the Source Code availability and
-          size indicator. */}
+      {/* Evidence section — one editor per track's file; each editor owns its
+          availability and size indicator. */}
       <section>
         <h2 className="text-lg font-semibold text-gray-900 mb-4">Evidence</h2>
         <div className="space-y-4">
           <SourceCodeEditor
             projectId={project.id}
+            field="ideaDoc"
+            sourceCode={project.ideaDoc}
+          />
+          <SourceCodeEditor
+            projectId={project.id}
+            field="sourceCode"
             sourceCode={project.sourceCode}
           />
         </div>
       </section>
 
-      {/* AI Scores section */}
+      {/* AI Scores section — one table per track */}
       <section>
         <h2 className="text-lg font-semibold text-gray-900 mb-4">AI Scores</h2>
-        <div className="rounded-xl bg-white shadow-sm ring-1 ring-gray-100 overflow-hidden">
-          {project.aiScores.length === 0 ? (
-            <p className="p-6 text-sm text-gray-500">No AI scores yet.</p>
-          ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="bg-gray-50 border-b border-gray-100">
-                    <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">
-                      Parameter
-                    </th>
-                    <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">
-                      Weight
-                    </th>
-                    <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">
-                      Score
-                    </th>
-                    <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">
-                      Reasoning
-                    </th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-gray-50">
-                  {project.aiScores.map((aiScore) => (
-                    <tr
-                      key={aiScore.id}
-                      className="hover:bg-gray-50/50 transition-colors"
-                    >
-                      <td className="px-4 py-3 font-medium text-gray-900">
-                        {aiScore.parameter.name}
-                      </td>
-                      <td className="px-4 py-3 text-gray-600">
-                        {aiScore.parameter.weight}%
-                      </td>
-                      <td className="px-4 py-3 font-semibold text-gray-900">
-                        {aiScore.score.toFixed(1)}
-                      </td>
-                      <td className="px-4 py-3 text-gray-600 max-w-md">
-                        {aiScore.reasoning}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+        <div className="space-y-4">
+          {aiScoresByTrack.map(({ track, scores }) => (
+            <div
+              key={track}
+              className="rounded-xl bg-white shadow-sm ring-1 ring-gray-100 overflow-hidden"
+            >
+              <div className="flex items-center justify-between border-b border-gray-100 px-4 py-3">
+                <h3 className="text-sm font-semibold text-gray-900">
+                  {TRACK_LABELS[track]}
+                </h3>
+                <span className="text-xs text-gray-500">
+                  {track === 'IDEA' ? category.ideaWeight : category.htmlWeight}% of final score
+                </span>
+              </div>
+              {scores.length === 0 ? (
+                <p className="p-6 text-sm text-gray-500">No AI scores yet.</p>
+              ) : (
+                <div className="overflow-x-auto">
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="bg-gray-50 border-b border-gray-100">
+                        <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">
+                          Parameter
+                        </th>
+                        <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">
+                          Weight
+                        </th>
+                        <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">
+                          Score
+                        </th>
+                        <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">
+                          Critic
+                        </th>
+                        <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">
+                          Reasoning
+                        </th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-gray-50">
+                      {scores.map((aiScore) => (
+                        <tr
+                          key={aiScore.id}
+                          className="hover:bg-gray-50/50 transition-colors"
+                        >
+                          <td className="px-4 py-3 font-medium text-gray-900">
+                            {aiScore.parameter.name}
+                          </td>
+                          <td className="px-4 py-3 text-gray-600">
+                            {aiScore.parameter.weight}%
+                          </td>
+                          <td className="px-4 py-3 font-semibold text-gray-900">
+                            {aiScore.score.toFixed(1)}
+                          </td>
+                          <td className="px-4 py-3">
+                            <CriticBadge approved={aiScore.criticApproved} />
+                          </td>
+                          <td className="px-4 py-3 text-gray-600 max-w-md whitespace-pre-line">
+                            {aiScore.reasoning}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
             </div>
-          )}
+          ))}
+        </div>
+      </section>
+
+      {/* Multi-agent audit trail */}
+      <section>
+        <h2 className="text-lg font-semibold text-gray-900 mb-4">
+          Critic Audit Trail
+        </h2>
+        <div className="space-y-4">
+          {SCORING_TRACKS.map((track) => (
+            <CriticAuditPanel
+              key={track}
+              track={track}
+              runs={project.evaluationRuns.filter((r) => r.track === track)}
+              parameterNames={parameterNames}
+              criticEnabled={category.criticEnabled}
+            />
+          ))}
         </div>
       </section>
 
@@ -309,6 +384,27 @@ export default async function ProjectDetailPage({ params }: PageProps) {
         </div>
       </section>
     </div>
+  )
+}
+
+// -----------------------------------------------------------------------
+// CriticBadge — whether the critic agent approved the AI score
+// -----------------------------------------------------------------------
+function CriticBadge({ approved }: { approved: boolean | null }) {
+  if (approved === null) {
+    return <span className="text-xs text-gray-400">not audited</span>
+  }
+  return approved ? (
+    <span className="inline-flex rounded-full bg-emerald-50 px-2 py-0.5 text-xs font-medium text-emerald-700 ring-1 ring-emerald-200">
+      approved
+    </span>
+  ) : (
+    <span
+      className="inline-flex rounded-full bg-amber-50 px-2 py-0.5 text-xs font-medium text-amber-700 ring-1 ring-amber-200"
+      title="The critic still found bias after the last allowed re-evaluation — review this score."
+    >
+      needs review
+    </span>
   )
 }
 

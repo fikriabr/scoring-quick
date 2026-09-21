@@ -1,7 +1,7 @@
 /**
- * Unit Tests: default parameter set (HTML)
+ * Unit Tests: default parameter set (IDEA_HTML)
  *
- *   - The default set totals exactly 100% weight.
+ *   - Each track (IDEA, HTML) of the default set totals exactly 100% weight.
  *   - The caller may load it explicitly or via the default argument.
  */
 
@@ -12,18 +12,25 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 // ---------------------------------------------------------------------------
 vi.mock('@/lib/db', () => {
   const db = {
+    // `loadDefaultParameters` reconciles the category's parameters with the
+    // template: matching rows are updated in place (keeping their scores),
+    // unmatched rows are deleted with their AI scores, the rest created.
     parameter: {
-      // `loadDefaultParameters` clears the category's existing parameters
-      // with `deleteMany` (one plain DELETE statement, safe under the Neon
-      // HTTP driver adapter) before calling `create` once per default row
-      // (not `createMany`) — see the comment in category.service.ts for why
-      // `createMany` can't run under that adapter.
+      findMany: vi.fn(),
       deleteMany: vi.fn(),
       create: vi.fn(),
+      update: vi.fn(),
     },
+    juryScore: { findMany: vi.fn() },
+    aIScore: { deleteMany: vi.fn() },
   }
   return { db, prisma: db }
 })
+
+vi.mock('@/lib/services/final-score.service', () => ({
+  recalculateCategoryScores: vi.fn(),
+  recalculateProjectScores: vi.fn(),
+}))
 
 // The server action pulls in NextAuth and the Next cache; both are stubbed so
 // the validation path can be exercised without a request context.
@@ -35,7 +42,6 @@ vi.mock('next/cache', () => ({
   revalidatePath: vi.fn(),
 }))
 
-import { Prisma } from '@prisma/client'
 import { db } from '@/lib/db'
 import { auth } from '@/lib/auth/config'
 import {
@@ -44,22 +50,39 @@ import {
   getDefaultParameterSet,
   isDefaultParameterSet,
   loadDefaultParameters,
-  LoadDefaultParametersError,
   type DefaultParameterSet,
 } from '@/lib/services/category.service'
+import { ParametersHaveJuryScoresError } from '@/lib/services/parameter.service'
+import { recalculateCategoryScores } from '@/lib/services/final-score.service'
 import { loadDefaultParametersAction } from '@/actions/parameter.actions'
 
 const mockDeleteMany = vi.mocked(db.parameter.deleteMany)
 const mockCreate = vi.mocked(db.parameter.create)
+const mockUpdate = vi.mocked(db.parameter.update)
+const mockFindMany = vi.mocked(db.parameter.findMany)
+const mockJuryFindMany = vi.mocked(db.juryScore.findMany)
+const mockAiDeleteMany = vi.mocked(db.aIScore.deleteMany)
 const mockAuth = vi.mocked(auth) as unknown as ReturnType<typeof vi.fn>
 
-/** A P2003 error shaped like the one Prisma throws on a FK constraint violation. */
-function foreignKeyError(): Prisma.PrismaClientKnownRequestError {
-  return new Prisma.PrismaClientKnownRequestError(
-    'Foreign key constraint failed on the field: `parameterId`',
-    { code: 'P2003', clientVersion: 'test' },
-  )
+/** An existing parameter row, as `parameter.findMany` returns it. */
+function existingParam(id: string, name: string, track: 'IDEA' | 'HTML' = 'HTML') {
+  return {
+    id, name, track, categoryId: 'cat', description: null, weight: 20,
+    minScore: 0, maxScore: 100, scoringMode: 'AUTO', orderIndex: 0,
+    createdAt: new Date(), updatedAt: new Date(),
+  }
 }
+
+/**
+ * An existing, already-scored category: two rows that the template still has
+ * (same name and track) and two that it no longer has.
+ */
+const LEGACY_HTML_SET = [
+  existingParam('old-semantic', 'Semantic HTML & Structure'),
+  existingParam('old-flow', 'Information Flow'),
+  existingParam('old-content', 'Content Quality & Specificity'),
+  existingParam('old-impact', 'Impact & Scalability'),
+]
 
 /** The `data` object from every individual `create` call, in call order. */
 function seededParameters(): Array<Record<string, unknown>> {
@@ -76,58 +99,68 @@ beforeEach(() => {
   vi.clearAllMocks()
   mockDeleteMany.mockResolvedValue({ count: 0 })
   mockCreate.mockImplementation(fakeCreate)
+  mockUpdate.mockImplementation(fakeCreate as unknown as typeof db.parameter.update)
+  mockFindMany.mockResolvedValue([] as never)
+  mockJuryFindMany.mockResolvedValue([] as never)
+  mockAiDeleteMany.mockResolvedValue({ count: 0 } as never)
   mockAuth.mockResolvedValue({ user: { role: 'ADMIN' } })
 })
 
 describe('default parameter sets — total weight', () => {
   it.each(DEFAULT_PARAMETER_SET_NAMES)(
-    'set %s totals exactly 100 percent weight',
+    'set %s totals exactly 100 percent weight in each track',
     (set) => {
-      const total = DEFAULT_PARAMETER_SETS[set].reduce(
-        (sum, p) => sum + p.weight,
-        0,
-      )
-      expect(total).toBe(100)
+      for (const track of ['IDEA', 'HTML'] as const) {
+        const total = DEFAULT_PARAMETER_SETS[set]
+          .filter((p) => p.track === track)
+          .reduce((sum, p) => sum + p.weight, 0)
+        expect(total).toBe(100)
+      }
     },
   )
 
-  it('exposes exactly the HTML set', () => {
-    expect([...DEFAULT_PARAMETER_SET_NAMES]).toEqual(['HTML'])
+  it('exposes exactly the IDEA_HTML set', () => {
+    expect([...DEFAULT_PARAMETER_SET_NAMES]).toEqual(['IDEA_HTML'])
   })
 
-  it('getDefaultParameterSet returns a set whose weights total 100%', () => {
+  it('getDefaultParameterSet returns 5 IDEA + 5 HTML parameters', () => {
     for (const set of DEFAULT_PARAMETER_SET_NAMES) {
       const parameters = getDefaultParameterSet(set)
-      expect(parameters).toHaveLength(5)
-      expect(parameters.reduce((sum, p) => sum + p.weight, 0)).toBe(100)
+      expect(parameters.filter((p) => p.track === 'IDEA')).toHaveLength(5)
+      expect(parameters.filter((p) => p.track === 'HTML')).toHaveLength(5)
     }
   })
 })
 
-describe('loadDefaultParameters — HTML set', () => {
-  it('seeds 5 parameters with the specified names and weights', async () => {
-    await loadDefaultParameters('cat_html', 'HTML')
+describe('loadDefaultParameters — IDEA_HTML set', () => {
+  it('seeds the IDEA and HTML parameters with the specified names and weights', async () => {
+    await loadDefaultParameters('cat_html', 'IDEA_HTML')
 
     const data = seededParameters()
-    expect(data).toHaveLength(5)
+    expect(data).toHaveLength(10)
     expect(
       data.map((p) => ({
         name: p.name,
         weight: p.weight,
+        track: p.track,
         orderIndex: p.orderIndex,
       })),
     ).toEqual([
-      { name: 'Semantic HTML & Structure', weight: 25, orderIndex: 0 },
-      { name: 'Accessibility', weight: 25, orderIndex: 1 },
-      { name: 'Code Quality & Maintainability', weight: 20, orderIndex: 2 },
-      { name: 'User Experience & Presentation', weight: 15, orderIndex: 3 },
-      { name: 'Impact & Scalability', weight: 15, orderIndex: 4 },
+      { name: 'Problem & Relevance', weight: 25, track: 'IDEA', orderIndex: 0 },
+      { name: 'Originality & Innovation', weight: 25, track: 'IDEA', orderIndex: 1 },
+      { name: 'Feasibility', weight: 20, track: 'IDEA', orderIndex: 2 },
+      { name: 'Impact & Scalability', weight: 20, track: 'IDEA', orderIndex: 3 },
+      { name: 'Clarity of Idea', weight: 10, track: 'IDEA', orderIndex: 4 },
+      { name: 'Idea Communication', weight: 25, track: 'HTML', orderIndex: 5 },
+      { name: 'Content Quality & Specificity', weight: 25, track: 'HTML', orderIndex: 6 },
+      { name: 'Page Completeness', weight: 20, track: 'HTML', orderIndex: 7 },
+      { name: 'Information Flow', weight: 15, track: 'HTML', orderIndex: 8 },
+      { name: 'Presentation Polish', weight: 15, track: 'HTML', orderIndex: 9 },
     ])
-    expect(data.reduce((sum, p) => sum + (p.weight as number), 0)).toBe(100)
   })
 
   it('gives every parameter a non-empty description, AUTO mode and 0-100 range', async () => {
-    await loadDefaultParameters('cat_html_meta', 'HTML')
+    await loadDefaultParameters('cat_html_meta', 'IDEA_HTML')
 
     for (const p of seededParameters()) {
       expect(typeof p.description).toBe('string')
@@ -139,14 +172,14 @@ describe('loadDefaultParameters — HTML set', () => {
     }
   })
 
-  it('seeds the same rows for the default argument as for an explicit HTML', async () => {
+  it('seeds the same rows for the default argument as for an explicit IDEA_HTML', async () => {
     await loadDefaultParameters('cat_default')
     const defaultData = seededParameters()
 
     vi.clearAllMocks()
     mockCreate.mockImplementation(fakeCreate)
 
-    await loadDefaultParameters('cat_explicit', 'HTML')
+    await loadDefaultParameters('cat_explicit', 'IDEA_HTML')
     const explicitData = seededParameters()
 
     expect(defaultData.map((p) => p.name)).toEqual(
@@ -155,48 +188,93 @@ describe('loadDefaultParameters — HTML set', () => {
   })
 })
 
-describe('loadDefaultParameters — replaces rather than appends', () => {
-  it('clears the category before seeding, so re-loading always lands on exactly 100%', async () => {
-    await loadDefaultParameters('cat_replace', 'HTML')
+describe('loadDefaultParameters — reconciles instead of delete-all', () => {
+  it('on an empty category, creates every template row and deletes nothing', async () => {
+    await loadDefaultParameters('cat_empty', 'IDEA_HTML')
 
-    expect(mockDeleteMany).toHaveBeenCalledOnce()
-    expect(mockDeleteMany).toHaveBeenCalledWith({
-      where: { categoryId: 'cat_replace' },
-    })
-    // The delete must happen before any create, or a re-load would still
-    // end up appending on top of rows the delete was supposed to clear.
-    const deleteOrder = mockDeleteMany.mock.invocationCallOrder[0]
-    for (const createCall of mockCreate.mock.invocationCallOrder) {
-      expect(createCall).toBeGreaterThan(deleteOrder)
-    }
-    expect(seededParameters()).toHaveLength(5)
+    expect(seededParameters()).toHaveLength(10)
+    expect(mockDeleteMany).not.toHaveBeenCalled()
+    expect(recalculateCategoryScores).toHaveBeenCalledWith('cat_empty')
   })
 
-  it('surfaces a clear error instead of a raw Prisma exception when scores block the delete', async () => {
-    mockDeleteMany.mockRejectedValue(foreignKeyError())
+  it('on an already-scored category, keeps matching parameters (and their scores) in place', async () => {
+    mockFindMany.mockResolvedValue(LEGACY_HTML_SET as never)
 
-    await expect(loadDefaultParameters('cat_scored', 'HTML')).rejects.toThrow(
-      LoadDefaultParametersError,
+    await loadDefaultParameters('cat_scored', 'IDEA_HTML')
+
+    // The HTML parameters the template still has are updated, not recreated.
+    const updatedIds = mockUpdate.mock.calls.map((c) => (c[0] as { where: { id: string } }).where.id)
+    expect(updatedIds.sort()).toEqual(['old-content', 'old-flow'])
+
+    // Rows the template no longer has — including "Impact & Scalability",
+    // which moved to the IDEA track — are removed with their AI scores.
+    expect(mockAiDeleteMany).toHaveBeenCalledWith({
+      where: { parameterId: { in: ['old-semantic', 'old-impact'] } },
+    })
+    expect(mockDeleteMany).toHaveBeenCalledWith({
+      where: { id: { in: ['old-semantic', 'old-impact'] } },
+    })
+    expect(seededParameters().map((p) => p.name)).toEqual([
+      'Problem & Relevance',
+      'Originality & Innovation',
+      'Feasibility',
+      'Impact & Scalability',
+      'Clarity of Idea',
+      'Idea Communication',
+      'Page Completeness',
+      'Presentation Polish',
+    ])
+    // AI scores are cleared before the parameter row is deleted (FK order).
+    expect(mockAiDeleteMany.mock.invocationCallOrder[0]).toBeLessThan(
+      mockDeleteMany.mock.invocationCallOrder[0],
     )
-    await expect(
-      loadDefaultParameters('cat_scored', 'HTML'),
-    ).rejects.toThrow(/existing AI\/jury scores reference/)
-    // The failed delete must not be followed by a create — half-replacing
-    // would leave the category in a worse state than before the click.
+  })
+
+  it('refuses — before any write — to remove a parameter jury members have scored', async () => {
+    mockFindMany.mockResolvedValue(LEGACY_HTML_SET as never)
+    mockJuryFindMany.mockResolvedValue([{ parameterId: 'old-impact' }] as never)
+
+    await expect(loadDefaultParameters('cat_jury', 'IDEA_HTML')).rejects.toThrow(
+      ParametersHaveJuryScoresError,
+    )
+    await expect(loadDefaultParameters('cat_jury', 'IDEA_HTML')).rejects.toThrow(
+      /"Impact & Scalability".*jury members have already scored/,
+    )
+    expect(mockAiDeleteMany).not.toHaveBeenCalled()
+    expect(mockDeleteMany).not.toHaveBeenCalled()
     expect(mockCreate).not.toHaveBeenCalled()
+    expect(mockUpdate).not.toHaveBeenCalled()
+  })
+
+  it('is idempotent — loading twice lands on the same 10 parameters', async () => {
+    await loadDefaultParameters('cat_twice', 'IDEA_HTML')
+    const firstRun = seededParameters()
+
+    vi.clearAllMocks()
+    mockCreate.mockImplementation(fakeCreate)
+    mockUpdate.mockImplementation(fakeCreate as unknown as typeof db.parameter.update)
+    mockJuryFindMany.mockResolvedValue([] as never)
+    mockFindMany.mockResolvedValue(
+      firstRun.map((p, i) => existingParam(`id-${i}`, p.name as string, p.track as 'IDEA' | 'HTML')) as never,
+    )
+
+    await loadDefaultParameters('cat_twice', 'IDEA_HTML')
+    expect(mockCreate).not.toHaveBeenCalled()
+    expect(mockDeleteMany).not.toHaveBeenCalled()
+    expect(mockUpdate).toHaveBeenCalledTimes(10)
   })
 
   it('lets an unrelated database error propagate as-is', async () => {
-    mockDeleteMany.mockRejectedValue(new Error('connection reset'))
+    mockFindMany.mockRejectedValue(new Error('connection reset'))
 
     await expect(
-      loadDefaultParameters('cat_broken', 'HTML'),
+      loadDefaultParameters('cat_broken', 'IDEA_HTML'),
     ).rejects.toThrow('connection reset')
   })
 })
 
 describe('unknown set names are rejected', () => {
-  const unknownValues = ['html', 'PARTYROCK', 'REACT', '', 'toString', null, 42]
+  const unknownValues = ['HTML', 'html', 'PARTYROCK', 'REACT', '', 'toString', null, 42]
 
   it('isDefaultParameterSet accepts only the known names', () => {
     for (const set of DEFAULT_PARAMETER_SET_NAMES) {
@@ -225,39 +303,42 @@ describe('unknown set names are rejected', () => {
 
     expect(result.success).toBe(false)
     expect(result.message).toMatch(/Unknown default parameter set/)
-    expect(result.message).toContain('HTML')
+    expect(result.message).toContain('IDEA_HTML')
     expect(mockDeleteMany).not.toHaveBeenCalled()
     expect(mockCreate).not.toHaveBeenCalled()
   })
 })
 
 describe('loadDefaultParametersAction', () => {
-  it('seeds HTML when the set argument is omitted', async () => {
+  it('seeds IDEA_HTML when the set argument is omitted', async () => {
     const result = await loadDefaultParametersAction('cat_action_default')
 
     expect(result.success).toBe(true)
-    expect(seededParameters().map((p) => p.name)).toContain(
-      'Semantic HTML & Structure',
-    )
+    expect(seededParameters().map((p) => p.name)).toContain('Idea Communication')
   })
 
-  it('seeds HTML when HTML is requested explicitly', async () => {
-    const result = await loadDefaultParametersAction('cat_action_html', 'HTML')
+  it('seeds IDEA_HTML when it is requested explicitly', async () => {
+    const result = await loadDefaultParametersAction('cat_action_html', 'IDEA_HTML')
 
     expect(result.success).toBe(true)
     expect(seededParameters().map((p) => p.name)).toEqual([
-      'Semantic HTML & Structure',
-      'Accessibility',
-      'Code Quality & Maintainability',
-      'User Experience & Presentation',
+      'Problem & Relevance',
+      'Originality & Innovation',
+      'Feasibility',
       'Impact & Scalability',
+      'Clarity of Idea',
+      'Idea Communication',
+      'Content Quality & Specificity',
+      'Page Completeness',
+      'Information Flow',
+      'Presentation Polish',
     ])
   })
 
   it('rejects a non-admin caller before any set validation', async () => {
     mockAuth.mockResolvedValue({ user: { role: 'JURY' } })
 
-    const result = await loadDefaultParametersAction('cat_forbidden', 'HTML')
+    const result = await loadDefaultParametersAction('cat_forbidden', 'IDEA_HTML')
 
     expect(result.success).toBe(false)
     expect(result.message).toMatch(/Forbidden/)

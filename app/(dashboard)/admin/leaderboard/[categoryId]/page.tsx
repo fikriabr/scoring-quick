@@ -7,6 +7,7 @@ import Link from 'next/link'
 import { getLeaderboard } from '@/lib/services/leaderboard.service'
 import { getCategoryById } from '@/lib/services/category.service'
 import PublishButton from './PublishButton'
+import { SCORING_TRACKS, TRACK_LABELS } from '@/lib/scoring/tracks'
 
 interface PageProps {
   params: Promise<{ categoryId: string }>
@@ -21,8 +22,11 @@ export default async function AdminLeaderboardPage({ params }: PageProps) {
   }
 
   const projects = await getLeaderboard(categoryId)
-  const parameters = category.parameters.sort(
-    (a, b) => a.orderIndex - b.orderIndex,
+  // IDEA parameters first, then HTML, each in its configured order.
+  const parameters = SCORING_TRACKS.flatMap((track) =>
+    category.parameters
+      .filter((p) => p.track === track)
+      .sort((a, b) => a.orderIndex - b.orderIndex),
   )
 
   return (
@@ -89,6 +93,18 @@ export default async function AdminLeaderboardPage({ params }: PageProps) {
                 <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">
                   Final Score
                 </th>
+                <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">
+                  {TRACK_LABELS.IDEA}
+                  <span className="block text-[10px] text-gray-400 normal-case">
+                    ({category.ideaWeight}%)
+                  </span>
+                </th>
+                <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">
+                  {TRACK_LABELS.HTML}
+                  <span className="block text-[10px] text-gray-400 normal-case">
+                    ({category.htmlWeight}%)
+                  </span>
+                </th>
                 {parameters.map((param) => (
                   <th
                     key={param.id}
@@ -97,7 +113,7 @@ export default async function AdminLeaderboardPage({ params }: PageProps) {
                   >
                     {param.name}
                     <span className="block text-[10px] text-gray-400 normal-case">
-                      (w: {param.weight}%)
+                      ({param.track === 'IDEA' ? 'Idea' : 'HTML'} · w: {param.weight}%)
                     </span>
                   </th>
                 ))}
@@ -135,6 +151,12 @@ export default async function AdminLeaderboardPage({ params }: PageProps) {
                     {project.finalScore != null
                       ? project.finalScore.toFixed(2)
                       : '—'}
+                  </td>
+                  <td className="px-4 py-3 text-sm text-right text-gray-700">
+                    {project.ideaScore != null ? project.ideaScore.toFixed(2) : '—'}
+                  </td>
+                  <td className="px-4 py-3 text-sm text-right text-gray-700">
+                    {project.htmlScore != null ? project.htmlScore.toFixed(2) : '—'}
                   </td>
                   {parameters.map((param) => {
                     const aiScore = project.aiScores.find(

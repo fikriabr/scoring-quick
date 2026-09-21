@@ -1,226 +1,57 @@
 // lib/services/scorer.service.ts
-// AI scoring service using Google Gemini.
-// Requirements: 5.1, 5.2, 5.3, 5.4, 5.5, 5.6, 5.7, 5.8, 5.9
+// AI scoring orchestrator — two isolated tracks, each run through the
+// multi-agent evaluator ⇄ critic loop (lib/services/ai/pipeline.ts).
+//
+//   IDEA track — evidence: Project.ideaDoc (markdown) only
+//   HTML track — evidence: page structure + markup + URL only
+//
+// The track scores are blended with the category's ideaWeight / htmlWeight
+// by `recalculateProjectScores`.
 
-import { GoogleGenerativeAI } from '@google/generative-ai'
 import { revalidatePath } from 'next/cache'
+import { Prisma } from '@prisma/client'
 import { db } from '@/lib/db'
+import { parseHtmlStructure } from '@/lib/services/html-structure.service'
+import { recalculateProjectScores } from '@/lib/services/final-score.service'
+import { createGeminiClient, type LlmClient } from '@/lib/services/ai/llm'
 import {
-  formatStructureForPrompt,
-  parseHtmlStructure,
-} from '@/lib/services/html-structure.service'
-import { calculateWeightedScore } from '@/lib/services/leaderboard.service'
-import type {
-  HtmlStructure,
-  ProjectMetadata,
-  ScoringParameter,
-  ScoringResult,
-} from '@/types'
+  HTML_EVIDENCE_CHAR_BUDGET,
+  TRUNCATION_MARKER,
+  type TrackEvidence,
+} from '@/lib/services/ai/evidence'
+import { runTrackEvaluation, type TrackEvaluationResult } from '@/lib/services/ai/pipeline'
+import { SCORING_TRACKS, type ScoringTrack } from '@/lib/scoring/tracks'
+import type { HtmlStructure } from '@/types'
 
-// -----------------------------------------------------------------------
-// Gemini client — authenticated via the GEMINI_API_KEY env var. This is a
-// free-tier API key (no billing/credit card required), read from
-// process.env at module load time.
-// Requirements: 9.4
-// -----------------------------------------------------------------------
-const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY ?? '')
-
-// -----------------------------------------------------------------------
-// buildPrompt
-//
-// Prompt for web projects, where the evidence is the page markup rather than
-// a PartyRock app definition. Two evidence blocks are handed to the model,
-// in this order and for this reason:
-//
-//   1. `## HTML Structure` — the computed metrics from
-//      `formatStructureForPrompt`. Small, bounded, and the most informative
-//      view of the project, so it goes first and goes in whole.
-//   2. `## HTML Source (excerpt)` — the raw markup, truncated. This is the
-//      part that is allowed to lose characters.
-//
-// The budget below (task 7.2, Requirement 4.3) is what makes that ordering
-// matter: the structure summary is rendered in full and its length subtracted
-// from the budget first, and only what is left over is spent on markup.
-//
-// Requirements: 4.1, 4.2, 4.3
-// -----------------------------------------------------------------------
+export { HTML_EVIDENCE_CHAR_BUDGET }
+export const HTML_MARKUP_TRUNCATION_MARKER = TRUNCATION_MARKER
 
 /**
- * Total character budget for the two evidence blocks of the HTML prompt — the
- * structure summary and the markup excerpt *combined*.
- *
- * Why 20.000, and why "combined": `buildPartyRockPrompt` caps `sourceCode` at
- * 20.000 characters, and that cap covers one block only. Applying the same
- * number to the whole evidence region means an HTML prompt is never larger
- * than the PartyRock prompt it is modelled on — the known-good prompt size
- * for this model — no matter how large the fetched page is.
- *
- * Spending it is strictly ordered (Requirement 4.3, Property 23): the
- * structure summary is bounded and is the most informative evidence, so it is
- * never truncated. `formatStructureForPrompt` truncates its own inputs and
- * caps its own line count (pinned at ≤2500 characters by P22-i in
- * `__tests__/services/html-structure.property.test.ts`), which leaves at least
- * 17.500 characters of markup in the worst case.
+ * Logged when the HTML track has no evidence at all: no Source Code, no
+ * computed structure and no fetched markup. The track is marked failed and
+ * the model is never called — it would only invent a score.
  */
-export const HTML_EVIDENCE_CHAR_BUDGET = 20000
+export const HTML_NO_EVIDENCE_MESSAGE =
+  'Evidence not available yet: this project has no Source Code, no computed HTML structure, and no fetched markup. Paste the page markup on the project detail page, then re-run scoring.'
 
-/**
- * Appended when the markup excerpt is cut, so the model reads the excerpt as
- * an excerpt rather than as a complete document (an unmarked cut invites it to
- * penalise a missing `</body>`). Its own length is charged to the budget.
- */
-export const HTML_MARKUP_TRUNCATION_MARKER = '\n... [truncated]'
+export const IDEA_NO_EVIDENCE_MESSAGE =
+  'Evidence not available yet: this project has no idea document. Paste or upload the markdown on the project detail page, then re-run scoring.'
 
-const HTML_STRUCTURE_UNAVAILABLE_NOTICE =
-  '(HTML structure unavailable — the markup could not be retrieved or parsed. Judge from the source excerpt below.)'
-
-const HTML_SOURCE_UNAVAILABLE_NOTICE = '(no HTML source provided)'
-
-/**
- * Renders the markup block within whatever budget the structure summary left
- * behind. `budget` is a character allowance, not a slice index — an empty
- * result is the correct answer when the allowance is exhausted, because the
- * alternative would be truncating the structure summary.
- */
-function renderMarkupExcerpt(
-  sourceCode: string | null | undefined,
-  budget: number,
-): string {
-  if (!sourceCode) {
-    return budget >= HTML_SOURCE_UNAVAILABLE_NOTICE.length
-      ? HTML_SOURCE_UNAVAILABLE_NOTICE
-      : ''
-  }
-
-  if (sourceCode.length <= budget) return sourceCode
-
-  const keep = budget - HTML_MARKUP_TRUNCATION_MARKER.length
-  return keep > 0
-    ? sourceCode.slice(0, keep) + HTML_MARKUP_TRUNCATION_MARKER
-    : ''
-}
-
-function buildPrompt(
-  metadata: ProjectMetadata,
-  parameter: ScoringParameter,
-  contextProjects: ProjectMetadata[],
-): string {
-  // A parse failure (or a project whose markup never arrived) still gets the
-  // `## HTML Structure` section — Property 23 makes the section's presence a
-  // function of the project type alone, so what varies is its contents, not
-  // whether it exists. Saying so explicitly also stops the model from reading
-  // an empty block as "no structure at all", which would be a silent penalty.
-  const structureSection = metadata.structure
-    ? formatStructureForPrompt(metadata.structure)
-    : HTML_STRUCTURE_UNAVAILABLE_NOTICE
-
-  // Structure first, in full; markup gets the remainder.
-  const remainingBudget = Math.max(
-    0,
-    HTML_EVIDENCE_CHAR_BUDGET - structureSection.length,
-  )
-  const sourceCodeSection = renderMarkupExcerpt(metadata.sourceCode, remainingBudget)
-
-  const contextSection =
-    contextProjects.length > 0
-      ? contextProjects
-        .map((p) => {
-          const size = p.structure
-            ? ` | Elements: ${p.structure.totalElementCount} | Semantic ratio: ${p.structure.semanticRatio.toFixed(2)}`
-            : ''
-          return `- Title: ${p.title ?? '(no title)'} | Description: ${p.description ?? '(no description)'}${size}`
-        })
-        .join('\n')
-      : '(no other projects in this category)'
-
-  return `
-You are an AI judge evaluating web projects based on their HTML structure.
-
-## Project to Evaluate
-Title: ${metadata.title ?? '(no title)'}
-Description: ${metadata.description ?? '(no description)'}
-URL: ${metadata.url ?? '(no url)'}
-
-## HTML Structure
-${structureSection}
-
-## HTML Source (excerpt)
-${sourceCodeSection}
-
-## Evaluation Parameter
-Name: ${parameter.name}
-Description: ${parameter.description ?? '(no description)'}
-Score range: ${parameter.minScore} to ${parameter.maxScore}
-
-## Other Projects in This Category (for comparison)
-${contextSection}
-
-## Analysis Instructions
-The HTML STRUCTURE section above is the primary evidence — it holds metrics computed from the actual markup. Use the source excerpt to judge craftsmanship that metrics cannot capture, and the title, description and URL as supporting context only.
-
-1. **Semantic HTML**: Assess whether meaning is carried by the right elements. Weigh the semantic ratio, landmark coverage, and whether the heading hierarchy is coherent — a page built from nested divs should score lower than one using header, nav, main, article and footer for the same layout.
-
-2. **Accessibility**: Evaluate alt text coverage on images, label coverage on form fields, ARIA usage, the presence of a skip link, and a declared document language. Judge intent and consistency, not just raw counts — a page with no images cannot earn credit for alt text it never needed.
-
-3. **Structural Quality & SEO**: Consider document metadata (title, meta description, viewport), separation of concerns (inline styles versus external stylesheets), and whether the DOM depth and element count suggest deliberate structure rather than accidental nesting.
-
-4. **Clarity of Presentation**: Assess how clearly the markup, headings, and copy communicate the project's purpose, audience, and usage.
-
-5. **Relative Complexity**: Compare this project against the other projects in the same category listed above. Judge ambition and completeness relative to its peers, not against an absolute ideal.
-
-## Output Format
-Respond with a valid JSON object only — no markdown, no code blocks, no additional text:
-{"score": <number between ${parameter.minScore} and ${parameter.maxScore}>, "reasoning": "<concise explanation of the score, 2–4 sentences>"}
-`.trim()
-}
-
-// -----------------------------------------------------------------------
-// Evidence availability
-//
-// A project is judged from its markup. If none of the three places that
-// markup can live holds anything usable, there is nothing to send to Gemini and
-// calling it would only produce a confidently invented score.
-// -----------------------------------------------------------------------
-
-/**
- * Whether a text column holds usable evidence.
- *
- * Whitespace counts as empty for the same reason it does in
- * `CrawlerService` — a blank textarea submits `''`, not `null`.
- */
-function hasUsableText(value: string | null | undefined): boolean {
+/** Whitespace counts as empty — a blank textarea submits `''`, not `null`. */
+function hasUsableText(value: string | null | undefined): value is string {
   return typeof value === 'string' && value.trim().length > 0
 }
 
 /**
- * Requirement 3.6, second clause — Source Code *is* a source of HTML Structure.
- *
- * The first clause of 3.6 ("do not overwrite pasted Source Code with the fetch
- * result") is the crawler's job and is already met there. The second clause is
- * this: when markup lives in `Project.sourceCode`, the structure metrics must be
- * derived from it. Without this the metrics only ever existed as a side effect of
- * a *successful* fetch — so the exact case Requirement 3.5 exists to rescue, a
- * failed fetch with pasted markup, lost its primary evidence block and fell back
- * to `HTML_STRUCTURE_UNAVAILABLE_NOTICE` despite holding perfectly good markup.
- *
- * Computed here rather than persisted, on purpose. `CrawlMetadata.structure` is
- * owned by `CrawlerService` — it is written alongside `rawHtml` from the same
- * fetch, and a second writer would make "which markup produced this row?"
- * unanswerable. `parseHtmlStructure` is a pure function with no I/O, so paying
- * for it once per scoring run is cheap and keeps ownership intact.
- *
- * A parse failure yields `null`, matching the design.md error table row "HTML
- * fetched but failed to parse → structure = null, scoring continues from the raw
- * markup, error logged". Losing the metrics is a degraded prompt; throwing here
- * would lose the whole score.
+ * When markup lives only in `Project.sourceCode` (pasted, or the fetch
+ * failed), the structure metrics are derived from it here. Computed rather
+ * than persisted: `CrawlMetadata.structure` is owned by the crawler. A parse
+ * failure degrades the prompt instead of losing the whole score.
  */
-function deriveStructureFromSourceCode(
-  sourceCode: string | null | undefined,
-): HtmlStructure | null {
+function deriveStructureFromSourceCode(sourceCode: string | null | undefined): HtmlStructure | null {
   if (!hasUsableText(sourceCode)) return null
-
   try {
-    return parseHtmlStructure(sourceCode as string)
+    return parseHtmlStructure(sourceCode)
   } catch (error) {
     console.error(
       '[Scorer] Could not derive HTML structure from the pasted Source Code; scoring continues from the raw markup:',
@@ -230,387 +61,170 @@ function deriveStructureFromSourceCode(
   }
 }
 
-/**
- * Recorded when an HTML project reaches the scorer with no evidence at all.
- *
- * Where this message goes: to the logs, and nowhere else. The schema has no
- * `scoreError` column, and adding one is out of scope for this task. The
- * available column, `Project.crawlError`, is deliberately left alone:
- *
- *   - it is not rendered on the project detail page (which shows only the two
- *     `StatusBadge`s), so writing to it would not reach the Admin anyway;
- *   - it *is* returned by `POST /api/crawl/[projectId]`, where a scoring
- *     message would read as a crawl failure — and for an HTML project whose
- *     fetch succeeded but produced no usable markup, that would be false.
- *
- * So the honest signal is `scoreStatus = FAILED` plus a log line. Surfacing the
- * reason in the UI needs a column of its own and belongs to its own task.
- */
-export const HTML_NO_EVIDENCE_MESSAGE =
-  'Evidence not available yet: this HTML project has no Source Code, no computed HTML structure, and no fetched markup. Paste the page markup on the project detail page, then re-run scoring.'
+type TrackOutcome =
+  | { track: ScoringTrack; status: 'skipped' }
+  | { track: ScoringTrack; status: 'failed'; reason: string; noEvidence?: boolean }
+  | { track: ScoringTrack; status: 'scored'; result: TrackEvaluationResult }
 
-// -----------------------------------------------------------------------
-// parseGeminiResponse
-// Extracts score and reasoning from a Google Gemini API response.
-// `rawText` is the raw text returned by `result.response.text()` and is
-// expected to be a JSON object { score, reasoning } (optionally wrapped
-// in markdown code fences).
-//
-// Clamping: if the model returns a score outside [minScore, maxScore],
-// it is clamped to the nearest boundary and a warning is appended to
-// the reasoning. ScoringResult.clamped is set to true.
-// Requirements: 5.2–5.6, 10 (AI Score Range Invariant)
-// -----------------------------------------------------------------------
-function parseGeminiResponse(
-  rawText: string,
-  parameter: ScoringParameter,
-): ScoringResult {
-  const textContent: string = rawText ?? ''
-
-  if (!textContent) {
-    throw new Error('Empty response body from Gemini')
-  }
-
-  // Strip potential markdown code fences that the model may include
-  const cleaned = textContent
-    .replace(/^```(?:json)?\s*/i, '')
-    .replace(/\s*```$/, '')
-    .trim()
-
-  let parsed: { score: unknown; reasoning: unknown }
-  try {
-    parsed = JSON.parse(cleaned)
-  } catch {
-    throw new Error(`Gemini response is not valid JSON: ${cleaned.slice(0, 200)}`)
-  }
-
-  const rawScore = Number(parsed.score)
-  const reasoning = String(parsed.reasoning ?? '')
-
-  if (!Number.isFinite(rawScore)) {
-    throw new Error(
-      `Gemini returned non-numeric score: ${String(parsed.score)}`,
-    )
-  }
-
-  const { minScore, maxScore } = parameter
-
-  // Clamp score to configured parameter range
-  let score = rawScore
-  let clamped = false
-  let clampedReasoning = reasoning
-
-  if (rawScore < minScore) {
-    score = minScore
-    clamped = true
-    clampedReasoning = `${reasoning} [WARNING: score ${rawScore} was out of range, clamped to ${minScore}]`
-  } else if (rawScore > maxScore) {
-    score = maxScore
-    clamped = true
-    clampedReasoning = `${reasoning} [WARNING: score ${rawScore} was out of range, clamped to ${maxScore}]`
-  }
-
-  return {
-    score,
-    reasoning: clampedReasoning,
-    ...(clamped && { clamped: true }),
-  }
+let defaultLlm: LlmClient | null = null
+function getDefaultLlm(): LlmClient {
+  defaultLlm ??= createGeminiClient()
+  return defaultLlm
 }
 
-// -----------------------------------------------------------------------
-// ScorerService
-// Main service class for AI-based parameter scoring via Google Gemini.
-// Requirements: 5.1, 5.2, 5.3, 5.4, 5.5, 5.6, 5.7
-// -----------------------------------------------------------------------
 export class ScorerService {
   /**
-   * Trigger AI scoring for all AUTO parameters of a project.
+   * Score every AUTO parameter of a project, track by track.
    *
-   * Fetches the project with its category parameters and CrawlMetadata,
-   * fetches other projects' metadata in the same category as context,
-   * then scores each AUTO parameter via Google Gemini.
-   *
-   * Score status transitions:
-   *   - All parameters succeeded → scoreStatus = 'SUCCESS'
-   *   - Some failed              → scoreStatus = 'PARTIAL'
-   *   - All failed               → scoreStatus = 'FAILED'
-   *
-   * Also calculates and saves a provisional finalScore from successful
-   * AI scores using calculateWeightedScore.
-   *
-   * Status determination, AI score persistence, range clamping and final score
-   * calculation are identical for both project types (Requirement 4.5). The one
-   * type-specific rule is Requirement 4.6: an HTML project with no evidence at
-   * all is marked FAILED without calling Gemini.
-   *
-   * Requirements: 4.5, 4.6, 5.1, 5.7, 5.8, 5.9
+   * Status:
+   *   - every track with AUTO parameters scored → SUCCESS
+   *   - some tracks failed                      → PARTIAL
+   *   - all such tracks failed                  → FAILED
+   *   - no AUTO parameters at all               → SUCCESS (nothing to do)
    */
-  static async triggerScoring(projectId: string): Promise<void> {
-    // 1. Fetch project with category parameters and crawl metadata
+  static async triggerScoring(projectId: string, llm: LlmClient = getDefaultLlm()): Promise<void> {
     const project = await db.project.findUniqueOrThrow({
       where: { id: projectId },
       include: {
-        category: { include: { parameters: true } },
+        category: { include: { parameters: { orderBy: { orderIndex: 'asc' } } } },
         metadata: true,
       },
     })
+    const { category } = project
 
-    // 2. Filter to AUTO-mode parameters only
-    const autoParameters = project.category.parameters.filter(
-      (p) => p.scoringMode === 'AUTO',
-    )
+    await db.project.update({ where: { id: projectId }, data: { scoreStatus: 'PROCESSING' } })
 
-    console.log(`[Scorer] Starting AI scoring for project ${projectId} — ${autoParameters.length} AUTO parameter(s)`)
-
-    if (autoParameters.length === 0) {
-      // Nothing to score — mark as SUCCESS with no AI scores.
-      //
-      // Checked before the evidence guard below on purpose: with no AUTO
-      // parameters there is no AI score to produce, so missing evidence cannot
-      // have failed anything. Reporting FAILED here would ask the Admin to fix
-      // evidence that nothing in this category consumes.
-      await db.project.update({
-        where: { id: projectId },
-        data: { scoreStatus: 'SUCCESS' },
-      })
-      return
-    }
-
-    /**
-     * Requirement 4.6 — an HTML project with no evidence at all is marked
-     * FAILED and Gemini is never called.
-     *
-     * "No evidence at all" means all three of the places markup can live are
-     * empty: no usable `sourceCode` (pasted or crawl-filled), no computed
-     * `structure`, and no `rawHtml`. Any one of them is enough to score from,
-     * which is why the crawl outcome itself is irrelevant here — `crawlError`
-     * is set on a failed fetch, but a project whose Source Code was pasted
-     * beforehand is perfectly scoreable (Requirement 3.5).
-     *
-     * Scoped to HTML by design. Requirement 4.6 is an HTML rule, and
-     * Requirement 8.2 pins PartyRock behaviour as-is: a PartyRock project with
-     * no evidence still goes to Gemini and still succeeds or fails on its own
-     * terms, exactly as before this feature.
-     */
     const crawledStructure = (project.metadata?.structure ?? null) as unknown as HtmlStructure | null
 
-    const hasEvidence =
-      hasUsableText(project.sourceCode) ||
-      crawledStructure !== null ||
-      hasUsableText(project.metadata?.rawHtml)
-
-    if (!hasEvidence) {
-      console.error(`[Scorer] ${HTML_NO_EVIDENCE_MESSAGE} (project ${projectId})`)
-
-      // Only `scoreStatus` is written. `finalScore` is left as it stands —
-      // it can carry a jury-derived value, and nothing was scored here that
-      // would justify clearing it.
-      await db.project.update({
-        where: { id: projectId },
-        data: { scoreStatus: 'FAILED' },
-      })
-      return
+    const evidenceFor = (track: ScoringTrack): TrackEvidence | string => {
+      if (track === 'IDEA') {
+        return hasUsableText(project.ideaDoc)
+          ? { track: 'IDEA', ideaDoc: project.ideaDoc }
+          : IDEA_NO_EVIDENCE_MESSAGE
+      }
+      const hasEvidence =
+        hasUsableText(project.sourceCode) ||
+        crawledStructure !== null ||
+        hasUsableText(project.metadata?.rawHtml)
+      if (!hasEvidence) return HTML_NO_EVIDENCE_MESSAGE
+      return {
+        track: 'HTML',
+        url: project.url,
+        // Pasted/crawl-filled source first; the raw fetch is the fallback.
+        sourceCode: hasUsableText(project.sourceCode)
+          ? project.sourceCode
+          : project.metadata?.rawHtml ?? null,
+        // The crawl-computed structure wins; sourceCode only fills a gap.
+        structure: crawledStructure ?? deriveStructureFromSourceCode(project.sourceCode),
+      }
     }
 
-    /**
-     * The crawl-computed structure wins whenever it exists; `sourceCode` is
-     * only parsed to fill a gap, never to overwrite. The two are not in
-     * competition: the crawler already refuses to overwrite pasted Source
-     * Code, so a row that has both was populated from that same markup.
-     */
-    const structure =
-      crawledStructure ?? deriveStructureFromSourceCode(project.sourceCode)
+    const outcomes: TrackOutcome[] = await Promise.all(
+      SCORING_TRACKS.map(async (track): Promise<TrackOutcome> => {
+        const parameters = category.parameters.filter(
+          (p) => p.track === track && p.scoringMode === 'AUTO',
+        )
+        if (parameters.length === 0) return { track, status: 'skipped' }
 
-    // Build this project's metadata for the scorer. Title/description/widgets
-    // come from the (optional, unused-by-default) crawl metadata; sourceCode is
-    // the participant-pasted code, which is now the primary scoring input.
-    const metadata: ProjectMetadata = project.metadata
-      ? {
-        title: project.metadata.title,
-        description: project.metadata.description,
-        widgets: project.metadata.widgets as unknown as ProjectMetadata['widgets'],
-        prompts: project.metadata.prompts as unknown as string[],
-        widgetCount: project.metadata.widgetCount,
-        sourceCode: project.sourceCode,
-        url: project.url,
-        structure,
-      }
-      : {
-        title: null,
-        description: null,
-        widgets: [],
-        prompts: [],
-        widgetCount: 0,
-        sourceCode: project.sourceCode,
-        url: project.url,
-        // Not hardcoded `null`: with no CrawlMetadata row there is certainly no
-        // crawled structure, but `sourceCode` may still supply one.
-        structure,
-      }
-
-    // 3. Fetch other projects' metadata in the same category as context.
-    // Ordered explicitly: without an `orderBy`, Postgres is free to return
-    // these rows in a different order on every call, which reshuffles the
-    // "Other Projects" comparison list in the prompt between one scoring run
-    // and the next — one more source of a re-score landing on a different
-    // number for evidence that hasn't changed.
-    const siblingMetadataRows = await db.crawlMetadata.findMany({
-      where: {
-        project: {
-          categoryId: project.categoryId,
-          id: { not: projectId },
-        },
-      },
-      orderBy: { projectId: 'asc' },
-    })
-
-    // `structure` is carried across so the HTML prompt's comparison section can
-    // render each peer's element count and semantic ratio — without it that
-    // section is always blank, and "judge this relative to its peers" has
-    // nothing to stand on.
-    //
-    // What is deliberately *not* carried across: `sourceCode`. It lives on
-    // Project, not CrawlMetadata, so this query cannot reach it — and it must
-    // stay that way. Every sibling's markup would be pulled into every prompt,
-    // once per parameter, which is the token-cost blow-up recorded in
-    // design.md. The bounded `structure` summary is the cheap substitute.
-    const contextProjects: ProjectMetadata[] = siblingMetadataRows.map((m) => ({
-      title: m.title,
-      description: m.description,
-      widgets: m.widgets as unknown as ProjectMetadata['widgets'],
-      prompts: m.prompts as unknown as string[],
-      widgetCount: m.widgetCount,
-      structure: (m.structure ?? null) as unknown as HtmlStructure | null,
-    }))
-
-    // 4. Score each AUTO parameter, collecting results and errors
-    type ParameterOutcome =
-      | { success: true; parameterId: string; result: ScoringResult; weight: number }
-      | { success: false; parameterId: string; error: unknown }
-
-    const outcomes: ParameterOutcome[] = await Promise.all(
-      autoParameters.map(async (param) => {
-        const scoringParam: ScoringParameter = {
-          id: param.id,
-          name: param.name,
-          description: param.description,
-          weight: param.weight,
-          minScore: param.minScore,
-          maxScore: param.maxScore,
-          scoringMode: param.scoringMode,
+        const evidence = evidenceFor(track)
+        if (typeof evidence === 'string') {
+          console.error(`[Scorer] ${track}: ${evidence} (project ${projectId})`)
+          return { track, status: 'failed', reason: evidence, noEvidence: true }
         }
+
+        console.log(`[Scorer] ${track}: evaluating ${parameters.length} parameter(s) for project ${projectId}`)
         try {
-          const result = await ScorerService.scoreParameter(
-            metadata,
-            scoringParam,
-            contextProjects,
-          )
-          console.log(`[Scorer] Parameter "${param.name}" scored: ${result.score}`)
-          return { success: true as const, parameterId: param.id, result, weight: param.weight }
+          const result = await runTrackEvaluation({
+            evidence,
+            parameters: parameters.map((p) => ({
+              id: p.id,
+              name: p.name,
+              description: p.description,
+              minScore: p.minScore,
+              maxScore: p.maxScore,
+            })),
+            llm,
+            criticEnabled: category.criticEnabled,
+            maxCriticRounds: category.maxCriticRounds,
+          })
+          return { track, status: 'scored', result }
         } catch (error) {
-          console.error(`[ScorerService] Failed to score parameter ${param.id} for project ${projectId}:`, error)
-          return { success: false as const, parameterId: param.id, error }
+          console.error(`[Scorer] ${track} evaluation failed for project ${projectId}:`, error)
+          return {
+            track,
+            status: 'failed',
+            reason: error instanceof Error ? error.message : String(error),
+          }
         }
       }),
     )
 
-    // 5. Upsert each successful AIScore to DB
-    const successful = outcomes.filter((o) => o.success === true) as Extract<ParameterOutcome, { success: true }>[]
-    const failed = outcomes.filter((o) => o.success === false)
+    // Persist each scored track: its AI scores and its audit trail (the
+    // previous run's rounds are replaced — they described older evidence).
+    for (const outcome of outcomes) {
+      if (outcome.status === 'failed' && outcome.noEvidence) {
+        // The evidence was removed: earlier AI scores for this track no longer
+        // describe anything the participant submitted.
+        await db.aIScore.deleteMany({
+          where: { projectId, parameter: { track: outcome.track } },
+        })
+        await db.aIEvaluationRun.deleteMany({ where: { projectId, track: outcome.track } })
+      }
+      if (outcome.status !== 'scored') continue
+      const { result, track } = outcome
 
-    await Promise.all(
-      successful.map((o) =>
-        db.aIScore.upsert({
-          where: {
-            projectId_parameterId: {
-              projectId,
-              parameterId: o.parameterId,
-            },
-          },
-          create: {
-            projectId,
-            parameterId: o.parameterId,
-            score: o.result.score,
-            reasoning: o.result.reasoning,
-          },
-          update: {
-            score: o.result.score,
-            reasoning: o.result.reasoning,
-            scoredAt: new Date(),
-          },
+      await Promise.all(
+        result.scores.map((s) => {
+          const data = {
+            score: s.score,
+            reasoning: s.evidence ? `${s.reasoning}\nEvidence: ${s.evidence}` : s.reasoning,
+            criticApproved: result.approved,
+          }
+          return db.aIScore.upsert({
+            where: { projectId_parameterId: { projectId, parameterId: s.parameterId } },
+            create: { projectId, parameterId: s.parameterId, ...data },
+            update: { ...data, scoredAt: new Date() },
+          })
         }),
-      ),
-    )
+      )
 
-    // 6. Determine final score status
-    let scoreStatus: 'SUCCESS' | 'PARTIAL' | 'FAILED'
-    if (failed.length === 0) {
-      scoreStatus = 'SUCCESS'
-    } else if (successful.length === 0) {
-      scoreStatus = 'FAILED'
-    } else {
-      scoreStatus = 'PARTIAL'
+      await db.aIEvaluationRun.deleteMany({ where: { projectId, track } })
+      for (const round of result.rounds) {
+        await db.aIEvaluationRun.create({
+          data: {
+            projectId,
+            track,
+            round: round.round,
+            evaluation: round.evaluation as unknown as Prisma.InputJsonValue,
+            critique: round.critique
+              ? ({
+                ...round.critique,
+                ...(round.oscillation && {
+                  oscillationParameterIds: round.oscillation.parameterIds,
+                }),
+              } as unknown as Prisma.InputJsonValue)
+              : round.criticError
+                ? ({ error: round.criticError } as Prisma.InputJsonValue)
+                : Prisma.JsonNull,
+            approved: round.approved,
+          },
+        })
+      }
     }
 
-    // 7. Calculate provisional finalScore from successful scores
-    const weightedInputs = successful.map((o) => ({
-      score: o.result.score,
-      weight: o.weight,
-    }))
-    const finalScore = successful.length > 0
-      ? calculateWeightedScore(weightedInputs)
-      : null
+    const attempted = outcomes.filter((o) => o.status !== 'skipped')
+    const failed = attempted.filter((o) => o.status === 'failed')
+    const scoreStatus =
+      failed.length === 0 ? 'SUCCESS' : failed.length === attempted.length ? 'FAILED' : 'PARTIAL'
 
-    // 8. Update project with new status and provisional finalScore
-    await db.project.update({
-      where: { id: projectId },
-      data: { scoreStatus, finalScore },
-    })
+    await db.project.update({ where: { id: projectId }, data: { scoreStatus } })
+    const scores = await recalculateProjectScores(projectId)
 
-    // 9. Revalidate leaderboard pages so updated scores are visible
     revalidatePath(`/admin/leaderboard/${project.categoryId}`)
     revalidatePath(`/public/leaderboard`)
 
-    console.log(`[Scorer] Scoring complete for project ${projectId} — status: ${scoreStatus}, finalScore: ${finalScore}`)
-  }
-
-  /**
-   * Score a single parameter for a project using Google Gemini.
-   *
-   * @param metadata       - Crawled metadata for the project being scored.
-   * @param parameter      - The scoring parameter (name, weight, range, mode).
-   * @param contextProjects - Other projects in the same category for comparison.
-   * @returns ScoringResult with score (clamped to range), reasoning, and
-   *          optional `clamped` flag if the raw model value was out of range.
-   *
-   * Requirements: 5.1, 5.2, 5.3, 5.4, 5.5, 5.6, 5.7
-   */
-  static async scoreParameter(
-    metadata: ProjectMetadata,
-    parameter: ScoringParameter,
-    contextProjects: ProjectMetadata[],
-  ): Promise<ScoringResult> {
-    const prompt = buildPrompt(metadata, parameter, contextProjects)
-
-    const model = genAI.getGenerativeModel({
-      model: process.env.GEMINI_MODEL_ID ?? 'gemini-flash-lite-latest',
-      // Scoring is a judgment task, not a creative one — the same evidence
-      // should produce the same score whether it's judged once or ten times.
-      // Left at the API default (commonly 1.0 for this model), the same
-      // prompt visibly swings between a low and a high score on repeated
-      // "Retry Score" calls, purely from sampling randomness, not from any
-      // change in the project. `temperature: 0` makes generation greedy
-      // (always pick the highest-probability token), which removes that
-      // source of variance; it does not guarantee bit-for-bit identical
-      // output across calls (serving-infra floating point non-determinism is
-      // a separate, much smaller effect), but it eliminates the swings this
-      // was actually causing.
-      generationConfig: { temperature: 0 },
-    })
-
-    const result = await model.generateContent(prompt)
-    const text = result.response.text()
-
-    return parseGeminiResponse(text, parameter)
+    console.log(
+      `[Scorer] Scoring complete for project ${projectId} — status: ${scoreStatus}, idea: ${scores.ideaScore}, html: ${scores.htmlScore}, final: ${scores.finalScore}`,
+    )
   }
 }

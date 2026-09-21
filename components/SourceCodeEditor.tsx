@@ -1,9 +1,10 @@
 // components/SourceCodeEditor.tsx
-// Post-submit Source Code editor, shown on the project detail page.
+// Post-submit evidence editor, shown on the project detail page — one
+// instance for the HTML Source Code, one for the idea document (markdown).
 //
-// This is the escape hatch for a project whose URL the crawler cannot fetch.
-// Saving posts to `PATCH /api/submissions/[id]`, which stores the value, flips
-// `scoreStatus` to PENDING and re-triggers scoring.
+// For HTML it is the escape hatch for a project whose URL the crawler cannot
+// fetch. Saving posts to `PATCH /api/submissions/[id]`, which stores the
+// value, flips `scoreStatus` to PENDING and re-triggers scoring.
 
 'use client'
 
@@ -12,21 +13,46 @@ import { useRouter } from 'next/navigation'
 // Prisma-free module: the constant cannot come from `@/lib/validators/schemas`,
 // which imports the Prisma enums as values and would pull the Prisma runtime
 // into the client bundle.
-import { MAX_SOURCE_CODE_LENGTH } from '@/lib/validators/source-code-rules'
+import {
+  MAX_IDEA_DOC_LENGTH,
+  MAX_SOURCE_CODE_LENGTH,
+} from '@/lib/validators/source-code-rules'
 
-const COPY = {
-  help: "Fill in the page's HTML markup. Used when the project URL cannot be fetched, and replaces the crawled markup.",
-  placeholder: "Paste the page's HTML markup here...",
+export type EvidenceField = 'sourceCode' | 'ideaDoc'
+
+const COPY: Record<
+  EvidenceField,
+  { title: string; help: string; placeholder: string; upload: string; accept: string; maxLength: number }
+> = {
+  sourceCode: {
+    title: 'HTML Source Code',
+    help: "Fill in the page's HTML markup. Used when the project URL cannot be fetched, and replaces the crawled markup.",
+    placeholder: "Paste the page's HTML markup here...",
+    upload: 'Upload HTML file...',
+    accept: '.html,.htm,text/html',
+    maxLength: MAX_SOURCE_CODE_LENGTH,
+  },
+  ideaDoc: {
+    title: 'Idea Document (Markdown)',
+    help: 'The only evidence of the Idea track — its evaluator never sees the HTML.',
+    placeholder: '# Project idea\n\nProblem, target users, proposed solution...',
+    upload: 'Upload .md file...',
+    accept: '.md,.markdown,.txt,text/markdown,text/plain',
+    maxLength: MAX_IDEA_DOC_LENGTH,
+  },
 }
 
 interface SourceCodeEditorProps {
   projectId: string
+  /** Which evidence column this editor edits. Defaults to the HTML source. */
+  field?: EvidenceField
   /** Current column value. `null` when nothing has been stored yet. */
   sourceCode: string | null
 }
 
 export default function SourceCodeEditor({
   projectId,
+  field = 'sourceCode',
   sourceCode,
 }: SourceCodeEditorProps) {
   const router = useRouter()
@@ -44,9 +70,11 @@ export default function SourceCodeEditor({
   } | null>(null)
   const [fileName, setFileName] = useState<string | null>(null)
 
-  const copy = COPY
+  const copy = COPY[field]
+  const maxLength = copy.maxLength
   const isUnchanged = draft === saved
-  const isTooLong = draft.length > MAX_SOURCE_CODE_LENGTH
+  const isTooLong = draft.length > maxLength
+  const fileInputId = `${field}FileEditor`
 
   async function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0]
@@ -55,20 +83,20 @@ export default function SourceCodeEditor({
 
     setMessage(null)
 
-    if (file.size > MAX_SOURCE_CODE_LENGTH) {
+    if (file.size > maxLength) {
       setMessage({
         kind: 'error',
-        text: `File is too large — must not exceed ${MAX_SOURCE_CODE_LENGTH.toLocaleString()} characters.`,
+        text: `File is too large — must not exceed ${maxLength.toLocaleString()} characters.`,
       })
       return
     }
 
     try {
       const text = await file.text()
-      if (text.length > MAX_SOURCE_CODE_LENGTH) {
+      if (text.length > maxLength) {
         setMessage({
           kind: 'error',
-          text: `File content must not exceed ${MAX_SOURCE_CODE_LENGTH.toLocaleString()} characters.`,
+          text: `File content must not exceed ${maxLength.toLocaleString()} characters.`,
         })
         return
       }
@@ -95,7 +123,7 @@ export default function SourceCodeEditor({
           // both read. The server normalises whitespace-only input the same
           // way, so the two agree.
           body: JSON.stringify({
-            sourceCode: draft.trim() === '' ? null : draft,
+            [field]: draft.trim() === '' ? null : draft,
           }),
         })
 
@@ -108,16 +136,16 @@ export default function SourceCodeEditor({
           return
         }
 
-        // Response shape: { id, sourceCode, scoreStatus }. Trust the server's
-        // normalised value over the local draft, so the counter and the
-        // indicator show what is actually stored.
+        // Response shape: { id, sourceCode, ideaDoc, scoreStatus }. Trust the
+        // server's normalised value over the local draft, so the counter and
+        // the indicator show what is actually stored.
         const stored: string =
-          typeof body?.sourceCode === 'string' ? body.sourceCode : ''
+          typeof body?.[field] === 'string' ? body[field] : ''
         setSaved(stored)
         setDraft(stored)
         setMessage({
           kind: 'ok',
-          text: 'Source Code saved. The AI Score is being updated — reload in a moment to see the results.',
+          text: `${copy.title} saved. The AI Score is being updated — reload in a moment to see the results.`,
         })
         router.refresh()
       } catch {
@@ -129,7 +157,7 @@ export default function SourceCodeEditor({
   return (
     <div className="rounded-xl bg-white p-6 shadow-sm ring-1 ring-gray-100">
       <div className="flex flex-wrap items-center gap-2">
-        <h3 className="text-sm font-semibold text-gray-900">Source Code</h3>
+        <h3 className="text-sm font-semibold text-gray-900">{copy.title}</h3>
         {/* Availability + size indicator, for both project types.
             Requirements: 5.6 */}
         {saved.length > 0 ? (
@@ -149,15 +177,15 @@ export default function SourceCodeEditor({
 
       <div className="mt-3 flex flex-wrap items-center gap-2">
         <label
-          htmlFor="sourceCodeFileEditor"
+          htmlFor={fileInputId}
           className="cursor-pointer rounded-lg border border-gray-200 bg-gray-50 px-3 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-100"
         >
-          Upload HTML file...
+          {copy.upload}
         </label>
         <input
-          id="sourceCodeFileEditor"
+          id={fileInputId}
           type="file"
-          accept=".html,.htm,text/html"
+          accept={copy.accept}
           onChange={handleFileChange}
           className="hidden"
         />
@@ -176,7 +204,7 @@ export default function SourceCodeEditor({
         }}
         rows={10}
         spellCheck={false}
-        maxLength={MAX_SOURCE_CODE_LENGTH}
+        maxLength={maxLength}
         placeholder={copy.placeholder}
         className="mt-4 w-full rounded-lg border border-gray-200 bg-gray-50 px-3 py-2.5 font-mono text-xs transition-colors focus:border-blue-500 focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-500/20"
       />
@@ -186,7 +214,7 @@ export default function SourceCodeEditor({
           className={`shrink-0 tabular-nums ${isTooLong ? 'text-red-600' : ''}`}
         >
           {draft.length.toLocaleString()} /{' '}
-          {MAX_SOURCE_CODE_LENGTH.toLocaleString()}
+          {maxLength.toLocaleString()}
         </p>
       </div>
 
@@ -252,9 +280,9 @@ function errorText(status: number, body: unknown): string {
 
   switch (status) {
     case 400:
-      return 'Invalid Source Code — check its length and try again.'
+      return 'Invalid content — check its length and try again.'
     case 403:
-      return 'Access denied. Only Admins may modify Source Code.'
+      return 'Access denied. Only Admins may modify submission evidence.'
     case 404:
       return 'Project not found. It may have been deleted — reload the page.'
     case 429:

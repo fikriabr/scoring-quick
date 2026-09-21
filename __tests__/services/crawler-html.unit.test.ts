@@ -394,7 +394,10 @@ describe('CrawlerService.triggerCrawl — scoring after a failed fetch', () => {
     expect(mockTriggerScoring).toHaveBeenCalledWith('project-1')
   })
 
-  it('does not score an HTML project with no sourceCode — that path belongs to the scorer', async () => {
+  // The idea document is scored independently of the fetch, so scoring runs
+  // even with no HTML evidence at all; the scorer marks just the HTML track
+  // failed (status PARTIAL) rather than the crawler skipping the project.
+  it('still scores a project with no sourceCode — the scorer handles missing HTML evidence', async () => {
     mockProjectFindUniqueOrThrow.mockResolvedValueOnce(
       buildProjectRecord({ sourceCode: null }) as never,
     )
@@ -403,10 +406,10 @@ describe('CrawlerService.triggerCrawl — scoring after a failed fetch', () => {
     await CrawlerService.triggerCrawl('project-1')
 
     expect(findProjectUpdateData('FAILED')).not.toBeNull()
-    expect(mockTriggerScoring).not.toHaveBeenCalled()
+    expect(mockTriggerScoring).toHaveBeenCalledWith('project-1')
   })
 
-  it('treats a whitespace-only sourceCode as no evidence at all', async () => {
+  it('still scores when the sourceCode is whitespace-only', async () => {
     mockProjectFindUniqueOrThrow.mockResolvedValueOnce(
       buildProjectRecord({ sourceCode: '   \n\t ' }) as never,
     )
@@ -415,7 +418,7 @@ describe('CrawlerService.triggerCrawl — scoring after a failed fetch', () => {
     await CrawlerService.triggerCrawl('project-1')
 
     expect(findProjectUpdateData('FAILED')).not.toBeNull()
-    expect(mockTriggerScoring).not.toHaveBeenCalled()
+    expect(mockTriggerScoring).toHaveBeenCalledWith('project-1')
   })
 
   it('still triggers scoring on a successful crawl', async () => {

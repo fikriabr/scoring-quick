@@ -4,10 +4,7 @@
 
 import { Prisma } from '@prisma/client'
 import { db } from '@/lib/db'
-import {
-  calculateWeightedScore,
-  calculateAverageJuryScore,
-} from '@/lib/services/leaderboard.service'
+import { recalculateProjectScores } from '@/lib/services/final-score.service'
 import { revalidatePath } from 'next/cache'
 
 // -----------------------------------------------------------------------
@@ -241,56 +238,12 @@ export async function acceptAiScore(
 
 // -----------------------------------------------------------------------
 // recalculateFinalScore
-// Fetches all jury scores for a project, groups by juryId, computes
-// each jury's weighted score, then averages across juries for the final.
+// Delegates to `recalculateProjectScores`: per parameter the mean of the jury
+// scores (AI score where no jury has scored yet), weighted within each track,
+// then blended with the category's ideaWeight / htmlWeight.
 //
 // Requirements: 6.4, 6.7
 // -----------------------------------------------------------------------
 async function recalculateFinalScore(projectId: string): Promise<void> {
-  // Fetch all jury scores for this project, joined with parameter weights
-  const juryScores = await db.juryScore.findMany({
-    where: { projectId },
-    include: {
-      parameter: {
-        select: { weight: true },
-      },
-    },
-  })
-
-  if (juryScores.length === 0) {
-    // No jury scores yet — leave finalScore unchanged
-    return
-  }
-
-  // Group scores by juryId
-  const scoresByJury = new Map<
-    string,
-    Array<{ score: number; weight: number }>
-  >()
-
-  for (const js of juryScores) {
-    const existing = scoresByJury.get(js.juryId) ?? []
-    existing.push({ score: js.score, weight: js.parameter.weight })
-    scoresByJury.set(js.juryId, existing)
-  }
-
-  // Calculate each jury's individual weighted score
-  const perJuryWeightedScores: number[] = []
-  for (const scores of scoresByJury.values()) {
-    perJuryWeightedScores.push(calculateWeightedScore(scores))
-  }
-
-  // Final score: average of all jury weighted scores
-  let finalScore: number
-  if (perJuryWeightedScores.length === 1) {
-    finalScore = perJuryWeightedScores[0]
-  } else {
-    finalScore = calculateAverageJuryScore(perJuryWeightedScores)
-  }
-
-  // Update project's finalScore
-  await db.project.update({
-    where: { id: projectId },
-    data: { finalScore },
-  })
+  await recalculateProjectScores(projectId)
 }

@@ -8,7 +8,14 @@ import {
   getDefaultParameterSet,
   type DefaultParameterSet,
 } from '@/lib/default-parameter-sets'
-import { CategorySchema, type CategoryInput } from '@/lib/validators/schemas'
+import {
+  CategorySchema,
+  CategoryScoringConfigSchema,
+  type CategoryInput,
+  type CategoryScoringConfigInput,
+} from '@/lib/validators/schemas'
+import { recalculateCategoryScores } from '@/lib/services/final-score.service'
+import { replaceCategoryParameters } from '@/lib/services/parameter.service'
 import { Prisma } from '@prisma/client'
 import { randomUUID } from 'crypto'
 
@@ -126,6 +133,23 @@ export async function getCategoryById(id: string) {
 }
 
 // -----------------------------------------------------------------------
+// updateCategoryScoringConfig
+// Sets how the IDEA and HTML track scores are blended (must total 100%) and
+// how the critic agent behaves, then re-blends every project's final score
+// with the new weights — the per-track scores do not change, so no AI call
+// is needed.
+// -----------------------------------------------------------------------
+export async function updateCategoryScoringConfig(
+  id: string,
+  input: CategoryScoringConfigInput,
+) {
+  const data = CategoryScoringConfigSchema.parse(input)
+  const category = await db.category.update({ where: { id }, data })
+  await recalculateCategoryScores(id)
+  return category
+}
+
+// -----------------------------------------------------------------------
 // publishCategory
 // Sets isPublished = true and generates a UUID v4 publicToken.
 // Requirements: 8.5
@@ -164,68 +188,23 @@ export {
 } from '@/lib/default-parameter-sets'
 
 // -----------------------------------------------------------------------
-// LoadDefaultParametersError
-// Thrown when the category's current parameters can't be cleared because
-// AI/jury scores still reference them (Prisma P2003).
-// -----------------------------------------------------------------------
-export class LoadDefaultParametersError extends Error {
-  readonly code = 'PARAMETERS_HAVE_SCORES'
-  constructor(categoryId: string) {
-    super(
-      `Cannot load a template into category "${categoryId}": existing AI/jury scores reference its current parameters. Remove those scores first, or add parameters individually via "Add Parameter" instead of loading a template.`,
-    )
-    this.name = 'LoadDefaultParametersError'
-  }
-}
-
-// -----------------------------------------------------------------------
 // loadDefaultParameters
-// Replaces the category's parameters with the default set (5 parameters
-// totalling 100% weight).
+// Replaces the category's parameters with the default set (IDEA + HTML
+// tracks, each totalling 100% weight).
 //
-// Replaces rather than appends: an earlier version only added rows, so
-// clicking "Load Default Template" more than once (or once after removing
-// rows in the builder's unsaved draft, which never touched the database)
-// piled up 10, 15, ... parameters and pushed the weight total to 200%, 300%,
-// etc. Deleting first makes the button idempotent — it always leaves the
-// category at exactly the template's 100%, matching what "load a template"
-// actually means to an admin.
+// Reconciles rather than delete-all-then-create: parameters whose name and
+// track match a template row are updated in place and keep their scores; the
+// rest are removed with their AI scores. Loading therefore works on a
+// category that has already been scored, and stays idempotent — it always
+// lands on exactly the template. Removing a parameter jury members have
+// already scored is refused (ParametersHaveJuryScoresError) before any write.
 // -----------------------------------------------------------------------
 export async function loadDefaultParameters(
   categoryId: string,
-  set: DefaultParameterSet = 'HTML',
+  set: DefaultParameterSet = 'IDEA_HTML',
 ) {
   const defaults = getDefaultParameterSet(set)
-
-  try {
-    // A single `deleteMany`, not one `delete` per row: it always compiles to
-    // one plain `DELETE ... WHERE` statement regardless of how many rows
-    // match, so — unlike `createMany` — it never needs the transaction that
-    // `PrismaNeonHTTP` (lib/db.ts) can't run.
-    await db.parameter.deleteMany({ where: { categoryId } })
-  } catch (err) {
-    if (
-      err instanceof Prisma.PrismaClientKnownRequestError &&
-      err.code === 'P2003'
-    ) {
-      throw new LoadDefaultParametersError(categoryId)
-    }
-    throw err
-  }
-
-  /**
-   * Not `createMany`: the Neon HTTP driver adapter (`PrismaNeonHTTP` in
-   * lib/db.ts) has no persistent connection to hold a transaction open on,
-   * so its `startTransaction()` unconditionally rejects with "Transactions
-   * are not supported in HTTP mode" — and Prisma routes `createMany` through
-   * exactly that, regardless of `skipDuplicates`. Every "Load Default
-   * Template" click failed with that error until this was split into one
-   * `create` per row: each is a single plain INSERT, so none of them needs a
-   * transaction. Run in parallel since the writes are independent (distinct
-   * rows, `orderIndex` is baked into the template data rather than derived
-   * from write order).
-   */
-  return Promise.all(
-    defaults.map((p) => db.parameter.create({ data: { ...p, categoryId } })),
-  )
+  const parameters = await replaceCategoryParameters(categoryId, defaults)
+  await recalculateCategoryScores(categoryId)
+  return parameters
 }

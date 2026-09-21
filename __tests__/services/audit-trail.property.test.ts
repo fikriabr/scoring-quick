@@ -15,6 +15,16 @@ import * as fc from 'fast-check'
 // ---------------------------------------------------------------------------
 // Mock next/cache (revalidatePath) BEFORE importing the service under test.
 // ---------------------------------------------------------------------------
+// Final-score recalculation (track blending) has its own tests; here it is
+// stubbed so these tests stay focused on the jury rules themselves.
+vi.mock('@/lib/services/final-score.service', () => ({
+  recalculateProjectScores: vi.fn().mockResolvedValue({
+    ideaScore: null,
+    htmlScore: null,
+    finalScore: null,
+  }),
+}))
+
 vi.mock('next/cache', () => ({
   revalidatePath: vi.fn(),
 }))

@@ -8,6 +8,7 @@ import { redirect, notFound } from 'next/navigation'
 import Link from 'next/link'
 import { db } from '@/lib/db'
 import JuryScoringForm from '@/components/JuryScoringForm'
+import { SCORING_TRACKS, TRACK_LABELS } from '@/lib/scoring/tracks'
 
 export default async function JuryScoringPage({
   params,
@@ -74,8 +75,11 @@ export default async function JuryScoringPage({
     )
   }
 
-  // Prepare data for the client component
-  const parameters = project.category.parameters.map((param) => {
+  // Prepare data for the client component, grouped by track (IDEA first).
+  const orderedParameters = SCORING_TRACKS.flatMap((track) =>
+    project.category.parameters.filter((p) => p.track === track),
+  )
+  const parameters = orderedParameters.map((param) => {
     const aiScore = project.aiScores.find((s) => s.parameterId === param.id)
     const juryScore = project.juryScores.find((s) => s.parameterId === param.id)
 
@@ -90,6 +94,8 @@ export default async function JuryScoringPage({
       aiReasoning: aiScore ? aiScore.reasoning : null,
       juryScore: juryScore ? juryScore.score : null,
       juryComment: juryScore ? juryScore.comment : null,
+      track: param.track,
+      aiCriticApproved: aiScore ? aiScore.criticApproved : null,
     }
   })
 
@@ -134,6 +140,44 @@ export default async function JuryScoringPage({
         ) : (
           <p className="text-sm text-gray-400">Source Code only — no URL.</p>
         )}
+      </div>
+
+      {/* Score summary + idea document */}
+      <div className="mb-6 p-4 bg-white rounded shadow border border-gray-200">
+        <div className="flex flex-wrap gap-6 text-sm">
+          <div>
+            <span className="text-gray-500">{TRACK_LABELS.IDEA}:</span>{' '}
+            <span className="font-semibold">
+              {project.ideaScore != null ? project.ideaScore.toFixed(2) : '—'}
+            </span>{' '}
+            <span className="text-xs text-gray-400">× {project.category.ideaWeight}%</span>
+          </div>
+          <div>
+            <span className="text-gray-500">{TRACK_LABELS.HTML}:</span>{' '}
+            <span className="font-semibold">
+              {project.htmlScore != null ? project.htmlScore.toFixed(2) : '—'}
+            </span>{' '}
+            <span className="text-xs text-gray-400">× {project.category.htmlWeight}%</span>
+          </div>
+          <div>
+            <span className="text-gray-500">Final:</span>{' '}
+            <span className="font-semibold">
+              {project.finalScore != null ? project.finalScore.toFixed(2) : '—'}
+            </span>
+          </div>
+        </div>
+        <details className="mt-4">
+          <summary className="cursor-pointer text-sm font-medium text-blue-700">
+            Idea document (markdown)
+          </summary>
+          {project.ideaDoc ? (
+            <pre className="mt-2 max-h-96 overflow-auto whitespace-pre-wrap rounded bg-gray-50 p-3 text-xs text-gray-800">
+              {project.ideaDoc}
+            </pre>
+          ) : (
+            <p className="mt-2 text-sm text-amber-700">No idea document submitted.</p>
+          )}
+        </details>
       </div>
 
       {/* CrawlMetadata section */}

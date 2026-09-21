@@ -12,6 +12,12 @@ import {
   type DefaultParameterSet,
 } from '@/lib/services/category.service'
 import { saveParameterSet } from '@/lib/services/parameter.service'
+import { updateCategoryScoringConfig } from '@/lib/services/category.service'
+import { recalculateCategoryScores } from '@/lib/services/final-score.service'
+import {
+  CategoryScoringConfigSchema,
+  type CategoryScoringConfigInput,
+} from '@/lib/validators/schemas'
 import { revalidatePath } from 'next/cache'
 
 export type ActionResult = {
@@ -21,12 +27,12 @@ export type ActionResult = {
 
 // -----------------------------------------------------------------------
 // loadDefaultParametersAction
-// Seeds the category with the default parameter set (5 parameters totalling
-// 100% weight).
+// Seeds the category with the default parameter set (IDEA + HTML tracks,
+// each totalling 100% weight).
 // -----------------------------------------------------------------------
 export async function loadDefaultParametersAction(
   categoryId: string,
-  set: DefaultParameterSet = 'HTML',
+  set: DefaultParameterSet = 'IDEA_HTML',
 ): Promise<ActionResult> {
   const session = await auth()
   if (!session || session.user.role !== 'ADMIN') {
@@ -54,20 +60,25 @@ export async function loadDefaultParametersAction(
 
 // -----------------------------------------------------------------------
 // saveParametersAction
-// Saves a full parameter set for a category (validates weight=100%).
+// Saves a full parameter set for a category (validates each track's
+// weight = 100%) together with the track blend and critic settings.
 // Requirements: 2.1, 2.2, 2.3
 // -----------------------------------------------------------------------
 export async function saveParametersAction(
   categoryId: string,
   parameters: {
+    /** Existing parameter id, so it is updated in place and keeps its scores. */
+    id?: string | null
     name: string
     description?: string | null
     weight: number
     minScore: number
     maxScore: number
     scoringMode: 'AUTO' | 'MANUAL'
+    track: 'IDEA' | 'HTML'
     orderIndex: number
   }[],
+  scoringConfig?: CategoryScoringConfigInput,
 ): Promise<ActionResult> {
   const session = await auth()
   if (!session || session.user.role !== 'ADMIN') {
@@ -75,7 +86,16 @@ export async function saveParametersAction(
   }
 
   try {
+    // Validate the config before the parameter set is replaced, so a bad
+    // config cannot leave the category half-saved.
+    if (scoringConfig) CategoryScoringConfigSchema.parse(scoringConfig)
     await saveParameterSet(categoryId, parameters)
+    // Both branches re-blend every project's score with the new parameters.
+    if (scoringConfig) {
+      await updateCategoryScoringConfig(categoryId, scoringConfig)
+    } else {
+      await recalculateCategoryScores(categoryId)
+    }
     revalidatePath(`/admin/categories/${categoryId}/parameters`)
     return { success: true }
   } catch (error) {

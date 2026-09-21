@@ -45,6 +45,8 @@ export async function exportToExcel(
     { header: 'Tim', key: 'teamName', width: 20 },
     { header: 'URL Project', key: 'url', width: 40 },
     { header: 'Skor Final', key: 'finalScore', width: 12 },
+    { header: 'Skor Idea (MD)', key: 'ideaScore', width: 14 },
+    { header: 'Skor HTML', key: 'htmlScore', width: 12 },
   ]
 
   // Dynamic columns per parameter
@@ -68,6 +70,8 @@ export async function exportToExcel(
       teamName: project.teamName ?? '',
       url: project.url,
       finalScore: project.finalScore,
+      ideaScore: project.ideaScore ?? null,
+      htmlScore: project.htmlScore ?? null,
     }
 
     // Populate AI scores
@@ -125,6 +129,8 @@ export function exportToCsv(projects: ProjectWithScores[]): string {
     'Tim',
     'URL Project',
     'Skor Final',
+    'Skor Idea (MD)',
+    'Skor HTML',
   ]
 
   for (const paramId of parameterIds) {
@@ -142,6 +148,8 @@ export function exportToCsv(projects: ProjectWithScores[]): string {
       project.teamName ?? '',
       project.url ?? '',
       project.finalScore != null ? String(project.finalScore) : '',
+      project.ideaScore != null ? String(project.ideaScore) : '',
+      project.htmlScore != null ? String(project.htmlScore) : '',
     ]
 
     for (const paramId of parameterIds) {

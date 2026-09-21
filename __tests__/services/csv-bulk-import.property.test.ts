@@ -43,13 +43,14 @@ import { bulkImportFromCsv } from '@/lib/services/submission.service'
 
 /**
  * Build a CSV string from an array of row objects.
- * The header is always: url,participant_name,team_name
+ * The header is always: url,participant_name,team_name,idea_doc
+ * (every row carries an idea document — it is a required file).
  *
  * Fields are RFC 4180 quoted: any field containing a comma, double-quote,
  * or newline is wrapped in double quotes, with internal quotes doubled.
  */
 function buildCsv(rows: { url: string; participant_name: string; team_name?: string }[]): string {
-  const header = 'url,participant_name,team_name'
+  const header = 'url,participant_name,team_name,idea_doc'
   // RFC 4180: wrap in quotes if field contains comma, quote, or newline;
   // escape embedded quotes by doubling them.
   const quoteField = (f: string): string => {
@@ -60,7 +61,7 @@ function buildCsv(rows: { url: string; participant_name: string; team_name?: str
   }
   const dataRows = rows.map((r) => {
     const teamName = r.team_name ?? ''
-    return [quoteField(r.url), quoteField(r.participant_name), quoteField(teamName)].join(',')
+    return [quoteField(r.url), quoteField(r.participant_name), quoteField(teamName), '# Idea'].join(',')
   })
   return [header, ...dataRows].join('\n')
 }

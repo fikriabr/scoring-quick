@@ -34,6 +34,9 @@ vi.mock('@/lib/db', () => ({
 import { db } from '@/lib/db'
 import { submitProject, DuplicateUrlError } from '@/lib/services/submission.service'
 
+/** Every submission carries its idea document — it is a required file. */
+const IDEA_DOC = '# Idea — a concrete problem and a proposed solution.'
+
 // Typed mock references
 const mockFindFirst = vi.mocked(db.project.findFirst)
 const mockCreate = vi.mocked(db.project.create)
@@ -130,7 +133,7 @@ describe('Property 6: Submission Duplicate Prevention', () => {
           mockFindFirst.mockResolvedValueOnce(null as never)
           mockCreate.mockResolvedValueOnce(record as never)
 
-          const result = await submitProject({ url, categoryId, participantName })
+          const result = await submitProject({ url, categoryId, participantName, ideaDoc: IDEA_DOC })
 
           expect(result).toBeDefined()
           expect(result.url).toBe(url)
@@ -166,12 +169,12 @@ describe('Property 6: Submission Duplicate Prevention', () => {
           mockFindFirst.mockResolvedValueOnce(record as never)
 
           // First submission succeeds
-          const first = await submitProject({ url, categoryId, participantName })
+          const first = await submitProject({ url, categoryId, participantName, ideaDoc: IDEA_DOC })
           expect(first).toBeDefined()
 
           // Second submission throws DuplicateUrlError
           await expect(
-            submitProject({ url, categoryId, participantName }),
+            submitProject({ url, categoryId, participantName, ideaDoc: IDEA_DOC }),
           ).rejects.toThrow(DuplicateUrlError)
         },
       ),
@@ -201,10 +204,10 @@ describe('Property 6: Submission Duplicate Prevention', () => {
           mockFindFirst.mockResolvedValueOnce(record as never)
 
           // First submission succeeds
-          await submitProject({ url, categoryId, participantName })
+          await submitProject({ url, categoryId, participantName, ideaDoc: IDEA_DOC })
 
           // Second submission fails
-          await submitProject({ url, categoryId, participantName }).catch(() => {})
+          await submitProject({ url, categoryId, participantName, ideaDoc: IDEA_DOC }).catch(() => {})
 
           // create must have been called only once — the duplicate was caught
           // before ever reaching the create call
@@ -234,7 +237,7 @@ describe('Property 6: Submission Duplicate Prevention', () => {
 
           let caught: unknown
           try {
-            await submitProject({ url, categoryId, participantName })
+            await submitProject({ url, categoryId, participantName, ideaDoc: IDEA_DOC })
           } catch (err) {
             caught = err
           }
@@ -275,8 +278,8 @@ describe('Property 6: Submission Duplicate Prevention', () => {
           mockFindFirst.mockResolvedValueOnce(null as never)
           mockCreate.mockResolvedValueOnce(record2 as never)
 
-          const first = await submitProject({ url, categoryId: catId1, participantName })
-          const second = await submitProject({ url, categoryId: catId2, participantName })
+          const first = await submitProject({ url, categoryId: catId1, participantName, ideaDoc: IDEA_DOC })
+          const second = await submitProject({ url, categoryId: catId2, participantName, ideaDoc: IDEA_DOC })
 
           expect(first.categoryId).toBe(catId1)
           expect(second.categoryId).toBe(catId2)
@@ -306,7 +309,7 @@ describe('Property 6: Submission Duplicate Prevention — deterministic edge cas
     mockFindFirst.mockResolvedValueOnce(null as never)
     mockCreate.mockResolvedValueOnce(record as never)
 
-    const result = await submitProject({ url, categoryId, participantName })
+    const result = await submitProject({ url, categoryId, participantName, ideaDoc: IDEA_DOC })
 
     expect(result.url).toBe(url)
     expect(result.categoryId).toBe(categoryId)
@@ -325,10 +328,10 @@ describe('Property 6: Submission Duplicate Prevention — deterministic edge cas
     // Second: duplicate exists
     mockFindFirst.mockResolvedValueOnce(record as never)
 
-    await submitProject({ url, categoryId, participantName })
+    await submitProject({ url, categoryId, participantName, ideaDoc: IDEA_DOC })
 
     await expect(
-      submitProject({ url, categoryId, participantName }),
+      submitProject({ url, categoryId, participantName, ideaDoc: IDEA_DOC }),
     ).rejects.toBeInstanceOf(DuplicateUrlError)
   })
 
@@ -339,8 +342,8 @@ describe('Property 6: Submission Duplicate Prevention — deterministic edge cas
     mockCreate.mockResolvedValueOnce(record as never)
     mockFindFirst.mockResolvedValueOnce(record as never)
 
-    await submitProject({ url, categoryId, participantName })
-    await submitProject({ url, categoryId, participantName }).catch(() => {})
+    await submitProject({ url, categoryId, participantName, ideaDoc: IDEA_DOC })
+    await submitProject({ url, categoryId, participantName, ideaDoc: IDEA_DOC }).catch(() => {})
 
     expect(mockCreate).toHaveBeenCalledTimes(1)
   })
@@ -351,7 +354,7 @@ describe('Property 6: Submission Duplicate Prevention — deterministic edge cas
 
     let caught: unknown
     try {
-      await submitProject({ url, categoryId, participantName })
+      await submitProject({ url, categoryId, participantName, ideaDoc: IDEA_DOC })
     } catch (err) {
       caught = err
     }
@@ -367,7 +370,7 @@ describe('Property 6: Submission Duplicate Prevention — deterministic edge cas
 
     let caught: DuplicateUrlError | undefined
     try {
-      await submitProject({ url, categoryId, participantName })
+      await submitProject({ url, categoryId, participantName, ideaDoc: IDEA_DOC })
     } catch (err) {
       caught = err as DuplicateUrlError
     }
@@ -387,8 +390,8 @@ describe('Property 6: Submission Duplicate Prevention — deterministic edge cas
     mockFindFirst.mockResolvedValueOnce(null as never)
     mockCreate.mockResolvedValueOnce(record2 as never)
 
-    const r1 = await submitProject({ url, categoryId, participantName })
-    const r2 = await submitProject({ url, categoryId: otherCategoryId, participantName })
+    const r1 = await submitProject({ url, categoryId, participantName, ideaDoc: IDEA_DOC })
+    const r2 = await submitProject({ url, categoryId: otherCategoryId, participantName, ideaDoc: IDEA_DOC })
 
     expect(r1.categoryId).toBe(categoryId)
     expect(r2.categoryId).toBe(otherCategoryId)
@@ -397,7 +400,7 @@ describe('Property 6: Submission Duplicate Prevention — deterministic edge cas
 
   it('invalid URL (malformed) is rejected by Zod before any DB call', async () => {
     await expect(
-      submitProject({ url: 'not-a-valid-url', categoryId, participantName }),
+      submitProject({ url: 'not-a-valid-url', categoryId, participantName, ideaDoc: IDEA_DOC }),
     ).rejects.toThrow()
 
     expect(mockFindFirst).not.toHaveBeenCalled()
@@ -406,7 +409,7 @@ describe('Property 6: Submission Duplicate Prevention — deterministic edge cas
 
   it('missing participantName is rejected by Zod before any DB call', async () => {
     await expect(
-      submitProject({ url, categoryId, participantName: '' }),
+      submitProject({ url, categoryId, participantName: '', ideaDoc: IDEA_DOC }),
     ).rejects.toThrow()
 
     expect(mockFindFirst).not.toHaveBeenCalled()

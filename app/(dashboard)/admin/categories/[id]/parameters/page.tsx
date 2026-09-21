@@ -48,8 +48,15 @@ export default async function AdminCategoryParametersPage({ params }: Props) {
         minScore: p.minScore,
         maxScore: p.maxScore,
         scoringMode: p.scoringMode,
+        track: p.track,
         orderIndex: p.orderIndex,
       }))}
+      initialScoringConfig={{
+        ideaWeight: category.ideaWeight,
+        htmlWeight: category.htmlWeight,
+        criticEnabled: category.criticEnabled,
+        maxCriticRounds: category.maxCriticRounds,
+      }}
       hasExistingScores={hasExistingScores}
     />
   )

@@ -112,6 +112,14 @@ const HEADER_ALIASES: Record<string, string> = {
   source: 'sourceCode',
   kode_sumber: 'sourceCode',
   kodesumber: 'sourceCode',
+  // ideaDoc
+  idea_doc: 'ideaDoc',
+  ideadoc: 'ideaDoc',
+  idea: 'ideaDoc',
+  ide: 'ideaDoc',
+  markdown: 'ideaDoc',
+  dokumen_ide: 'ideaDoc',
+  dokumenide: 'ideaDoc',
   // categoryId
   category_id: 'categoryId',
   categoryid: 'categoryId',
@@ -182,6 +190,7 @@ export async function submitProject(input: unknown): Promise<Project> {
       participantName: data.participantName,
       teamName: data.teamName ?? null,
       sourceCode: data.sourceCode ?? null,
+      ideaDoc: data.ideaDoc ?? null,
       // Explicit defaults for clarity
       crawlStatus: 'PENDING',
       scoreStatus: 'PENDING',
@@ -241,7 +250,7 @@ export async function bulkImportFromCsv(
   // `url` is not in this list — it's optional per row (a row may rely on
   // `source_code` alone), enforced by `CsvRowSchema`'s per-row refinement
   // rather than at the header level.
-  const missingColumns = (['participantName'] as const).filter(
+  const missingColumns = (['participantName', 'ideaDoc'] as const).filter(
     (column) => !headers.includes(column),
   )
 
@@ -255,7 +264,7 @@ export async function bulkImportFromCsv(
           message:
             `CSV is missing required column(s): ${missingColumns.join(', ')}. ` +
             `Detected columns: ${headers.join(', ') || '(none)'}. ` +
-            `Expected a header row such as: url, participant_name, team_name, source_code.`,
+            `Expected a header row such as: url, participant_name, team_name, source_code, idea_doc.`,
         },
       ],
     }
@@ -302,7 +311,7 @@ export async function bulkImportFromCsv(
       continue
     }
 
-    const { url, participantName, teamName, sourceCode } = parsed.data
+    const { url, participantName, teamName, sourceCode, ideaDoc } = parsed.data
 
     try {
       // Skip silently if exact duplicate (same URL + categoryId) already
@@ -331,6 +340,7 @@ export async function bulkImportFromCsv(
           participantName,
           teamName: teamName ?? null,
           sourceCode: sourceCode ?? null,
+          ideaDoc: ideaDoc ?? null,
           crawlStatus: 'PENDING',
           scoreStatus: 'PENDING',
         },

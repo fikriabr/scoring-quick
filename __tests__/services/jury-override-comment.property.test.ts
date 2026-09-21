@@ -66,6 +66,16 @@ vi.mock('@/lib/services/leaderboard.service', () => ({
   calculateAverageJuryScore: vi.fn().mockReturnValue(50),
 }))
 
+// Final-score recalculation (track blending) has its own tests; here it is
+// stubbed so these tests stay focused on the jury rules themselves.
+vi.mock('@/lib/services/final-score.service', () => ({
+  recalculateProjectScores: vi.fn().mockResolvedValue({
+    ideaScore: null,
+    htmlScore: null,
+    finalScore: null,
+  }),
+}))
+
 vi.mock('next/cache', () => ({
   revalidatePath: vi.fn(),
 }))

@@ -1,5 +1,6 @@
 // app/api/submissions/[id]/route.ts
-// API route handler for updating a submitted project's Source Code.
+// API route handler for updating a submitted project's evidence: the HTML
+// Source Code and/or the idea document (markdown).
 // Admin-only — guarded via session check.
 // Requirements: 5.2, 5.3, 5.4
 
@@ -9,7 +10,7 @@ import { NextRequest, NextResponse, after } from 'next/server'
 import { auth } from '@/lib/auth/config'
 import { handleApiError } from '@/lib/api-error'
 import { rateLimit } from '@/lib/rate-limit'
-import { SourceCodeUpdateSchema } from '@/lib/validators/schemas'
+import { EvidenceUpdateSchema } from '@/lib/validators/schemas'
 import { ScorerService } from '@/lib/services/scorer.service'
 import { db } from '@/lib/db'
 
@@ -46,6 +47,8 @@ export async function GET(request: NextRequest, context: RouteContext) {
         crawlError: true,
         scoreStatus: true,
         finalScore: true,
+        ideaScore: true,
+        htmlScore: true,
       },
     })
 
@@ -118,9 +121,10 @@ export async function DELETE(request: NextRequest, context: RouteContext) {
 }
 
 // -----------------------------------------------------------------------
-// PATCH /api/submissions/[id] — replace a project's Source Code
+// PATCH /api/submissions/[id] — replace a project's Source Code and/or
+// idea document
 //
-// Body: { sourceCode: string | null }
+// Body: { sourceCode?: string | null, ideaDoc?: string | null } — at least one
 //
 // The order of the steps below is the contract, not a style choice
 // (Property 24): authorization, rate limit, project existence and body
@@ -166,15 +170,16 @@ export async function PATCH(
     // `handleApiError` turns into 400 VALIDATION_ERROR. Blank input is
     // normalised to `null` by the schema so `''` never reaches the column.
     const body = await request.json()
-    const { sourceCode } = SourceCodeUpdateSchema.parse(body)
+    const { sourceCode, ideaDoc } = EvidenceUpdateSchema.parse(body)
 
     // Single write: the new evidence and the fact that the existing AI score no
     // longer reflects it (Requirement 5.4) are one state change, so they are
     // persisted together rather than in two updates that could interleave.
+    // Keys absent from the body (`undefined`) are left untouched.
     const updated = await db.project.update({
       where: { id },
-      data: { sourceCode, scoreStatus: 'PENDING' },
-      select: { id: true, sourceCode: true, scoreStatus: true },
+      data: { sourceCode, ideaDoc, scoreStatus: 'PENDING' },
+      select: { id: true, sourceCode: true, ideaDoc: true, scoreStatus: true },
     })
 
     // Re-scoring runs on the AI provider's clock, well past any request

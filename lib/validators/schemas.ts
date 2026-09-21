@@ -1,12 +1,16 @@
 // lib/validators/schemas.ts
 
 import { z } from 'zod'
-import { ScoringMode } from '@prisma/client'
+import { ScoringMode, ScoringTrack } from '@prisma/client'
 import { validateProjectUrl } from './url-rules'
 import {
+  IDEA_DOC_REQUIRED_MESSAGE,
+  IDEA_DOC_TOO_LONG_MESSAGE,
+  MAX_IDEA_DOC_LENGTH,
   MAX_SOURCE_CODE_LENGTH,
   SOURCE_CODE_TOO_LONG_MESSAGE,
 } from './source-code-rules'
+import { MAX_CRITIC_ROUNDS_LIMIT, SCORING_TRACKS } from '@/lib/scoring/tracks'
 
 /**
  * The Source Code length limit and its message now live in
@@ -15,7 +19,7 @@ import {
  * in the Prisma runtime via `z.nativeEnum`. Re-exported here so callers that
  * already read the limit off the schemas module keep working.
  */
-export { MAX_SOURCE_CODE_LENGTH, SOURCE_CODE_TOO_LONG_MESSAGE }
+export { MAX_SOURCE_CODE_LENGTH, SOURCE_CODE_TOO_LONG_MESSAGE, MAX_IDEA_DOC_LENGTH }
 
 /**
  * Object-level URL check for submission payloads. `superRefine` (rather than
@@ -67,6 +71,24 @@ function refineUrlOrSourceCode(
     message:
       'Provide a Project URL or upload/paste Source Code — at least one is required.',
     path: ['sourceCode'],
+  })
+}
+
+/**
+ * Both files are mandatory: the idea document feeds the IDEA track and the
+ * HTML (URL or Source Code) feeds the HTML track. A submission without the
+ * idea document would have its IDEA track scored 0, so it is rejected up
+ * front instead.
+ */
+function refineIdeaDocRequired(
+  data: { ideaDoc?: string | null },
+  ctx: z.RefinementCtx,
+): void {
+  if (hasText(data.ideaDoc)) return
+  ctx.addIssue({
+    code: z.ZodIssueCode.custom,
+    message: IDEA_DOC_REQUIRED_MESSAGE,
+    path: ['ideaDoc'],
   })
 }
 
@@ -164,6 +186,7 @@ export const ParameterSchema = z.object({
     .number()
     .min(0, 'Maximum score must be at least 0'),
   scoringMode: z.nativeEnum(ScoringMode).default(ScoringMode.AUTO),
+  track: z.nativeEnum(ScoringTrack).default(ScoringTrack.HTML),
   orderIndex: z.number().int().min(0).default(0),
 }).refine(
   (data) => data.maxScore > data.minScore,
@@ -178,10 +201,14 @@ export type ParameterInput = z.infer<typeof ParameterSchema>
 // -----------------------------------------------------------------------
 // ParameterSetSchema
 // Validates a full set of parameters for a category.
-// Refine: total weight of all parameters must equal 100% within ±0.001 tolerance.
+// Refine: every track (IDEA, HTML) needs at least one parameter, and each
+// track's weights must total 100% within ±0.001 tolerance. The blend between
+// the tracks is a category setting (CategoryScoringConfigSchema).
 // -----------------------------------------------------------------------
 
 const ParameterItemSchema = z.object({
+  /** Id of an existing parameter being kept; absent for a new row. */
+  id: z.string().min(1).optional().nullable(),
   name: z
     .string()
     .min(1, 'Parameter name is required')
@@ -202,6 +229,7 @@ const ParameterItemSchema = z.object({
     .number()
     .min(0, 'Maximum score must be at least 0'),
   scoringMode: z.nativeEnum(ScoringMode).default(ScoringMode.AUTO),
+  track: z.nativeEnum(ScoringTrack).default(ScoringTrack.HTML),
   orderIndex: z.number().int().min(0).default(0),
 }).refine(
   (data) => data.maxScore > data.minScore,
@@ -215,19 +243,64 @@ export const ParameterSetSchema = z
   .array(ParameterItemSchema)
   .min(1, 'At least one parameter is required')
   .superRefine((parameters, ctx) => {
-    const totalWeight = parameters.reduce((sum, p) => sum + p.weight, 0)
-    if (Math.abs(totalWeight - 100) > 0.001) {
-      const diff = (100 - totalWeight).toFixed(3)
-      const direction = totalWeight < 100 ? 'increase' : 'decrease'
+    for (const track of SCORING_TRACKS) {
+      const inTrack = parameters.filter((p) => p.track === track)
+      if (inTrack.length === 0) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: `The ${track} track needs at least one parameter — both files are scored.`,
+          path: [],
+        })
+        continue
+      }
+      const totalWeight = inTrack.reduce((sum, p) => sum + p.weight, 0)
+      if (Math.abs(totalWeight - 100) > 0.001) {
+        const diff = (100 - totalWeight).toFixed(3)
+        const direction = totalWeight < 100 ? 'increase' : 'decrease'
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: `Total ${track} parameter weight must equal 100%. Current total is ${totalWeight.toFixed(3)}%. Please ${direction} weights by ${Math.abs(Number(diff)).toFixed(3)}%.`,
+          path: [],
+        })
+      }
+    }
+  })
+
+export type ParameterSetInput = z.input<typeof ParameterSetSchema>
+
+// -----------------------------------------------------------------------
+// CategoryScoringConfigSchema
+// How the two track scores are blended, and how the critic agent behaves.
+// -----------------------------------------------------------------------
+
+export const CategoryScoringConfigSchema = z
+  .object({
+    ideaWeight: z.number().min(0, 'Idea weight must be at least 0%').max(100),
+    htmlWeight: z.number().min(0, 'HTML weight must be at least 0%').max(100),
+    criticEnabled: z.boolean().default(true),
+    maxCriticRounds: z
+      .number()
+      .int()
+      .min(0, 'Max critic rounds must be at least 0')
+      .max(
+        MAX_CRITIC_ROUNDS_LIMIT,
+        `Max critic rounds must not exceed ${MAX_CRITIC_ROUNDS_LIMIT}`,
+      )
+      .default(2),
+  })
+  .superRefine((data, ctx) => {
+    const total = data.ideaWeight + data.htmlWeight
+    if (Math.abs(total - 100) > 0.001) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
-        message: `Total parameter weight must equal 100%. Current total is ${totalWeight.toFixed(3)}%. Please ${direction} weights by ${Math.abs(Number(diff)).toFixed(3)}%.`,
-        path: [],
+        message: `Idea weight + HTML weight must equal 100%. Current total is ${total.toFixed(1)}%.`,
+        path: ['htmlWeight'],
       })
     }
   })
 
-export type ParameterSetInput = z.infer<typeof ParameterSetSchema>
+export type CategoryScoringConfigInput = z.input<typeof CategoryScoringConfigSchema>
+export type CategoryScoringConfig = z.infer<typeof CategoryScoringConfigSchema>
 
 // -----------------------------------------------------------------------
 // SubmissionSchema
@@ -255,46 +328,74 @@ export const SubmissionSchema = z.object({
     .max(MAX_SOURCE_CODE_LENGTH, SOURCE_CODE_TOO_LONG_MESSAGE)
     .optional()
     .nullable(),
+  /** Idea document (markdown) — required, evidence for the IDEA track. */
+  ideaDoc: z
+    .string()
+    .max(MAX_IDEA_DOC_LENGTH, IDEA_DOC_TOO_LONG_MESSAGE)
+    .optional()
+    .nullable(),
   categoryId: z.string().min(1, 'Category ID is required'),
 })
   .superRefine(refineProjectUrl)
   .superRefine(refineUrlOrSourceCode)
+  .superRefine(refineIdeaDocRequired)
 
 export type SubmissionInput = z.infer<typeof SubmissionSchema>
 
 // -----------------------------------------------------------------------
-// SourceCodeUpdateSchema
-// Validates the body of `PATCH /api/submissions/[id]` — the admin editor that
-// pastes or corrects a project's Source Code after submission.
+// EvidenceUpdateSchema
+// Validates the body of `PATCH /api/submissions/[id]` — the admin editors that
+// paste or correct a project's HTML Source Code and/or idea document after
+// submission. At least one of the two keys must be present.
 // -----------------------------------------------------------------------
 
-export const SourceCodeUpdateSchema = z.object({
-  /**
-   * Blank input normalises to `null` rather than `''`.
-   *
-   * Downstream, `hasUsableText` in the scorer and `hasUsableSourceCode` in the
-   * crawler both treat a whitespace-only string as "no evidence". Storing `''`
-   * would satisfy neither predicate yet still read as a non-null column, so the
-   * normalisation happens here — at the only write path that can introduce the
-   * value — instead of being re-derived by every reader.
-   *
-   * The length cap is checked before the trim, so a payload over the limit is
-   * rejected on what the admin actually sent.
-   */
-  sourceCode: z
-    .string()
-    .max(MAX_SOURCE_CODE_LENGTH, SOURCE_CODE_TOO_LONG_MESSAGE)
-    .nullable()
-    .transform((value) => {
-      if (value == null) return null
-      return value.trim().length > 0 ? value : null
-    }),
-})
+/**
+ * Blank input normalises to `null` rather than `''`: downstream readers treat
+ * a whitespace-only string as "no evidence", and storing `''` would satisfy
+ * neither predicate yet still read as a non-null column. The length cap is
+ * checked before the trim, so a payload over the limit is rejected on what the
+ * admin actually sent.
+ */
+function blankToNull(value: string | null | undefined): string | null | undefined {
+  if (value === undefined) return undefined
+  if (value === null) return null
+  return value.trim().length > 0 ? value : null
+}
 
-/** Raw body shape accepted by `SourceCodeUpdateSchema` (pre-transform). */
-export type SourceCodeUpdateInput = z.input<typeof SourceCodeUpdateSchema>
-/** Validated, normalised body — `sourceCode` is `string | null`, never `''`. */
-export type SourceCodeUpdateData = z.infer<typeof SourceCodeUpdateSchema>
+export const EvidenceUpdateSchema = z
+  .object({
+    sourceCode: z
+      .string()
+      .max(MAX_SOURCE_CODE_LENGTH, SOURCE_CODE_TOO_LONG_MESSAGE)
+      .nullable()
+      .optional()
+      .transform(blankToNull),
+    ideaDoc: z
+      .string()
+      .max(MAX_IDEA_DOC_LENGTH, IDEA_DOC_TOO_LONG_MESSAGE)
+      .nullable()
+      .optional()
+      .transform(blankToNull),
+  })
+  .superRefine((data, ctx) => {
+    if (data.sourceCode === undefined && data.ideaDoc === undefined) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: 'Provide sourceCode and/or ideaDoc to update.',
+        path: [],
+      })
+    }
+  })
+
+/** Kept for existing callers — the Source Code editor sends only `sourceCode`. */
+export const SourceCodeUpdateSchema = EvidenceUpdateSchema
+
+/** Raw body shape accepted by `EvidenceUpdateSchema` (pre-transform). */
+export type EvidenceUpdateInput = z.input<typeof EvidenceUpdateSchema>
+export type SourceCodeUpdateInput = EvidenceUpdateInput
+/** Validated, normalised body — values are `string | null | undefined`, never `''`. */
+export type EvidenceUpdateData = z.infer<typeof EvidenceUpdateSchema>
+export type SourceCodeUpdateData = EvidenceUpdateData
 
 // -----------------------------------------------------------------------
 // JuryScoreSchema
@@ -332,7 +433,8 @@ export type JuryScoreInput = z.infer<typeof JuryScoreSchema>
 // CsvRowSchema
 // Validates a single row from a bulk CSV import.
 // Columns: url, participantName (or participant_name), teamName (or team_name),
-//          sourceCode (or source_code), categoryId (or category_id)
+//          sourceCode (or source_code), ideaDoc (or idea_doc),
+//          categoryId (or category_id)
 // -----------------------------------------------------------------------
 
 export const CsvRowSchema = z.object({
@@ -367,10 +469,16 @@ export const CsvRowSchema = z.object({
     .string()
     .max(MAX_SOURCE_CODE_LENGTH, SOURCE_CODE_TOO_LONG_MESSAGE)
     .nullable(),
+  /** Idea document (markdown). Nullable-but-not-optional, same as above. */
+  ideaDoc: z
+    .string()
+    .max(MAX_IDEA_DOC_LENGTH, IDEA_DOC_TOO_LONG_MESSAGE)
+    .nullable(),
   categoryId: z.string().min(1, 'Category ID is required'),
 })
   .superRefine(refineProjectUrl)
   .superRefine(refineUrlOrSourceCode)
+  .superRefine(refineIdeaDocRequired)
 
 export type CsvRowInput = z.infer<typeof CsvRowSchema>
 
@@ -388,12 +496,15 @@ export const CsvRowRawSchema = z
     teamName: z.string().optional().nullable(),
     source_code: z.string().optional().nullable(),
     sourceCode: z.string().optional().nullable(),
+    idea_doc: z.string().optional().nullable(),
+    ideaDoc: z.string().optional().nullable(),
     category_id: z.string().optional(),
     categoryId: z.string().optional(),
   })
   .transform((row) => {
     const teamRaw = row.teamName ?? row.team_name
     const sourceRaw = row.sourceCode ?? row.source_code
+    const ideaRaw = row.ideaDoc ?? row.idea_doc
     const urlRaw = row.url
     return {
       // Blank/absent means "no URL for this row" — same treatment as
@@ -404,6 +515,7 @@ export const CsvRowRawSchema = z
       teamName: teamRaw != null && teamRaw.trim() !== '' ? teamRaw.trim() : null,
       // Same for sourceCode — absent column means "no code pasted", i.e. null
       sourceCode: sourceRaw != null && sourceRaw.trim() !== '' ? sourceRaw : null,
+      ideaDoc: ideaRaw != null && ideaRaw.trim() !== '' ? ideaRaw : null,
       categoryId: (row.categoryId ?? row.category_id ?? '').trim(),
     }
   })

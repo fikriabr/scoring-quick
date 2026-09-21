@@ -9,6 +9,7 @@ import { handleApiError } from '@/lib/api-error'
 import {
   listParametersByCategory,
   saveParameterSet,
+  ParametersHaveJuryScoresError,
 } from '@/lib/services/parameter.service'
 
 // -----------------------------------------------------------------------
@@ -75,6 +76,12 @@ export async function POST(request: NextRequest) {
     const created = await saveParameterSet(categoryId, parameters)
     return NextResponse.json(created, { status: 201 })
   } catch (error) {
+    if (error instanceof ParametersHaveJuryScoresError) {
+      return NextResponse.json(
+        { error: 'Conflict', message: error.message, code: error.code },
+        { status: 409 },
+      )
+    }
     return handleApiError(error)
   }
 }

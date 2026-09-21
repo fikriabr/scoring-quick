@@ -4,6 +4,7 @@ import type {
   CrawlStatus,
   ScoreStatus,
   ScoringMode,
+  ScoringTrack,
 } from '@prisma/client'
 
 // -----------------------------------------------------------------------
@@ -102,6 +103,7 @@ export interface ScoringParameter {
   minScore: number
   maxScore: number
   scoringMode: ScoringMode
+  track?: ScoringTrack
 }
 
 export interface ScoringResult {
@@ -135,6 +137,10 @@ export interface ProjectWithScores {
   crawlStatus: CrawlStatus
   scoreStatus: ScoreStatus
   finalScore: number | null
+  /** Weighted score of the IDEA (markdown) track alone. */
+  ideaScore?: number | null
+  /** Weighted score of the HTML track alone. */
+  htmlScore?: number | null
   createdAt: Date
   aiScores: Array<{ parameterId: string; score: number; reasoning: string }>
   juryScores: Array<{

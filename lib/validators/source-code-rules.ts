@@ -27,3 +27,16 @@ export const MAX_SOURCE_CODE_LENGTH = 100_000
 /** Locale pinned to `en-US` so the message is identical on every runtime. */
 export const SOURCE_CODE_TOO_LONG_MESSAGE =
   `Source code must not exceed ${MAX_SOURCE_CODE_LENGTH.toLocaleString('en-US')} characters`
+
+/**
+ * Maximum accepted length of the idea document (`Project.ideaDoc`, markdown).
+ * Same budget as the HTML source: both are sent to the evaluator whole or as
+ * an excerpt, and both have to fit the same character counters in the UI.
+ */
+export const MAX_IDEA_DOC_LENGTH = 100_000
+
+export const IDEA_DOC_TOO_LONG_MESSAGE =
+  `Idea document must not exceed ${MAX_IDEA_DOC_LENGTH.toLocaleString('en-US')} characters`
+
+export const IDEA_DOC_REQUIRED_MESSAGE =
+  'Idea document (markdown) is required — upload a .md file or paste its content.'

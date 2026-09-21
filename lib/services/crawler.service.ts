@@ -297,19 +297,19 @@ export class CrawlerService {
 
       /**
        * A failed fetch is not the end of the road: the crawl is recorded as
-       * `FAILED` with its error — the status machine is untouched — but if
-       * Source Code was pasted in beforehand, the evidence needed for scoring
-       * is already in the database and scoring proceeds from it.
-       *
-       * The no-source-code case is intentionally left alone: marking
-       * `scoreStatus = FAILED` with an "evidence not available" message is
-       * owned by `triggerScoring`.
+       * `FAILED` with its error — the status machine is untouched — and
+       * scoring still runs. The IDEA track never depended on the fetch, and
+       * the HTML track scores from pasted Source Code when there is some; when
+       * there is none, `triggerScoring` marks just that track failed (status
+       * PARTIAL) instead of leaving the whole project stuck at PENDING.
        */
       if (hasUsableSourceCode(project?.sourceCode)) {
         console.log(
           '[Crawler] Fetch failed but sourceCode is present - continuing to AI scoring for project ' +
           projectId,
         )
+      }
+      if (project) {
         if (guard.timedOut) return
         // Awaited for the same reason as the success branch above — this must
         // finish before `triggerCrawl`'s promise resolves, or an enclosing

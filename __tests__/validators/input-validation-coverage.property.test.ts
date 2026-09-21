@@ -393,6 +393,7 @@ describe('Property 19: SubmissionSchema — invalid inputs are rejected', () => 
             url,
             participantName,
             categoryId: 'validid',
+            ideaDoc: '# Idea',
           })
           expect(result.success).toBe(true)
         },

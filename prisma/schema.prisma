@@ -34,6 +34,15 @@ enum ScoringMode {
   MANUAL
 }
 
+/// Which submitted file a parameter judges. Each track is scored by its own
+/// isolated AI evaluator (it never sees the other file) and audited by a
+/// critic agent; the two track scores are combined with the category's
+/// `ideaWeight` / `htmlWeight`.
+enum ScoringTrack {
+  IDEA
+  HTML
+}
+
 model User {
   id            String   @id @default(cuid())
   name          String
@@ -67,6 +76,15 @@ model Category {
   description String?
   isPublished Boolean  @default(false)
   publicToken String?  @unique
+  /// Share of the final score taken by the IDEA (markdown) track, in percent.
+  /// `ideaWeight + htmlWeight` must equal 100.
+  ideaWeight      Float   @default(60)
+  /// Share of the final score taken by the HTML track, in percent.
+  htmlWeight      Float   @default(40)
+  /// Run the critic/auditor agent over every AI evaluation.
+  criticEnabled   Boolean @default(true)
+  /// How many times an evaluation may be redone after the critic flags bias.
+  maxCriticRounds Int     @default(2)
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
@@ -98,6 +116,7 @@ model Parameter {
   minScore    Float       @default(0)
   maxScore    Float       @default(100)
   scoringMode ScoringMode @default(AUTO)
+  track       ScoringTrack @default(HTML)
   orderIndex  Int         @default(0)
   createdAt   DateTime    @default(now())
   updatedAt   DateTime    @updatedAt
@@ -119,10 +138,16 @@ model Project {
   participantName String
   teamName        String?
   sourceCode      String?
+  /// The idea document (markdown) — evidence for the IDEA track.
+  ideaDoc         String?
   crawlStatus     CrawlStatus @default(PENDING)
   crawlError      String?
   scoreStatus     ScoreStatus @default(PENDING)
   finalScore      Float?
+  /// Weighted score of the IDEA track alone (0–100 scale of its parameters).
+  ideaScore       Float?
+  /// Weighted score of the HTML track alone.
+  htmlScore       Float?
   /**
    * Soft-delete flag. "Deleting" a submission sets this to `false` rather
    * than removing the row — AIScore/JuryScore/AuditLog history stays intact.
@@ -144,6 +169,7 @@ model Project {
   aiScores   AIScore[]
   juryScores JuryScore[]
   auditLogs  AuditLog[]
+  evaluationRuns AIEvaluationRun[]
 
   @@unique([categoryId, url])
 }
@@ -169,12 +195,34 @@ model AIScore {
   parameterId String
   score       Float
   reasoning   String
+  /// false when the critic still reported bias after the last allowed round —
+  /// the score is kept but flagged for jury review. null = critic disabled.
+  criticApproved Boolean?
   scoredAt    DateTime @default(now())
 
   project   Project   @relation(fields: [projectId], references: [id])
   parameter Parameter @relation(fields: [parameterId], references: [id])
 
   @@unique([projectId, parameterId])
+}
+
+/// One evaluator → critic round for one track of one project. Kept as an audit
+/// trail so the admin/jury can see why a score was re-evaluated.
+model AIEvaluationRun {
+  id          String       @id @default(cuid())
+  projectId   String
+  track       ScoringTrack
+  round       Int
+  /// Scores + reasoning produced by the evaluator agent in this round.
+  evaluation  Json
+  /// Critic verdict: { approved, findings[], feedback }. null when disabled.
+  critique    Json?
+  approved    Boolean
+  createdAt   DateTime     @default(now())
+
+  project Project @relation(fields: [projectId], references: [id])
+
+  @@index([projectId, track])
 }
 
 model JuryScore {
