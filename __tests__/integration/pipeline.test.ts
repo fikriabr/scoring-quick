@@ -102,6 +102,17 @@ const IDEA_DOC = `# KasirKu
 Small shops lose sales because queues are slow. KasirKu is an offline-first
 point-of-sale app for warungs that syncs when a connection is available.`
 
+// This file exercises the pipeline, not the vendor wiring (that is
+// __tests__/services/llm-routing.test.ts), so both agents are pinned to the
+// mocked Gemini client — otherwise the evaluator would route to its default
+// vendor, Anthropic, and try to authenticate.
+vi.stubEnv('LLM_EVALUATOR_PROVIDER', 'google')
+vi.stubEnv('LLM_CRITIC_PROVIDER', 'google')
+// One attempt per call: the transient-failure backoff has its own tests
+// (__tests__/services/llm-routing.test.ts), and here it would only make the
+// scripted failures sleep through real delays.
+vi.stubEnv('LLM_MAX_RETRIES', '1')
+
 const { mockGenerateContent } = vi.hoisted(() => ({ mockGenerateContent: vi.fn() }))
 vi.mock('@google/generative-ai', () => {
   class MockGoogleGenerativeAI {

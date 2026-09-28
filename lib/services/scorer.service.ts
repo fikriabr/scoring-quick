@@ -13,7 +13,7 @@ import { Prisma } from '@prisma/client'
 import { db } from '@/lib/db'
 import { parseHtmlStructure } from '@/lib/services/html-structure.service'
 import { recalculateProjectScores } from '@/lib/services/final-score.service'
-import { createGeminiClient, type LlmClient } from '@/lib/services/ai/llm'
+import { createRoutedLlmClient, type LlmClient } from '@/lib/services/ai/llm'
 import {
   HTML_EVIDENCE_CHAR_BUDGET,
   TRUNCATION_MARKER,
@@ -68,7 +68,7 @@ type TrackOutcome =
 
 let defaultLlm: LlmClient | null = null
 function getDefaultLlm(): LlmClient {
-  defaultLlm ??= createGeminiClient()
+  defaultLlm ??= createRoutedLlmClient()
   return defaultLlm
 }
 
