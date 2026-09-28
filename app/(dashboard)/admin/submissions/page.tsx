@@ -7,6 +7,8 @@ import Link from 'next/link'
 import { db } from '@/lib/db'
 import { groupProjectsByCategory } from '@/lib/submission-grouping'
 import ProjectsTable from '@/components/ProjectsTable'
+import ScoringQueuePanel from '@/components/ScoringQueuePanel'
+import { getQueueStats } from '@/lib/services/scoring-queue.service'
 
 export default async function AdminSubmissionsPage() {
   // Fetch all active (non-deleted) projects with category info
@@ -42,6 +44,7 @@ export default async function AdminSubmissionsPage() {
   // Group projects into one section per category (event + category name),
   // sorted by event then category. Empty categories never appear here.
   const groups = groupProjectsByCategory(serializedProjects)
+  const queueStats = await getQueueStats()
 
   return (
     <div className="space-y-8">
@@ -60,6 +63,9 @@ export default async function AdminSubmissionsPage() {
           <span aria-hidden="true">+</span> Add Submission
         </Link>
       </div>
+
+      {/* Queue status + worker control for imported submissions */}
+      <ScoringQueuePanel initialStats={queueStats} />
 
       {/* Project list table */}
       <section>

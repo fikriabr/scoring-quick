@@ -143,6 +143,15 @@ model Project {
   crawlStatus     CrawlStatus @default(PENDING)
   crawlError      String?
   scoreStatus     ScoreStatus @default(PENDING)
+  /// Why the last scoring run failed, surfaced to the admin. Cleared on a
+  /// successful run.
+  scoreError      String?
+  /// Queue bookkeeping. A worker claims a PENDING project by flipping it to
+  /// PROCESSING and stamping `scoreStartedAt`; a claim older than the stale
+  /// window is reclaimed (the worker died mid-run). `scoreAttempts` stops a
+  /// permanently broken project from being retried forever.
+  scoreAttempts   Int         @default(0)
+  scoreStartedAt  DateTime?
   finalScore      Float?
   /// Weighted score of the IDEA track alone (0–100 scale of its parameters).
   ideaScore       Float?
@@ -172,6 +181,8 @@ model Project {
   evaluationRuns AIEvaluationRun[]
 
   @@unique([categoryId, url])
+  /// The queue's claim query filters on exactly these columns.
+  @@index([scoreStatus, isActive, createdAt])
 }
 
 model CrawlMetadata {

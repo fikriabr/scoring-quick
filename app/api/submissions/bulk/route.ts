@@ -5,12 +5,11 @@
 
 export const runtime = 'nodejs'
 
-import { NextRequest, NextResponse, after } from 'next/server'
+import { NextRequest, NextResponse } from 'next/server'
 import { auth } from '@/lib/auth/config'
 import { handleApiError } from '@/lib/api-error'
 import { rateLimit } from '@/lib/rate-limit'
 import { bulkImportFromCsv } from '@/lib/services/submission.service'
-import { CrawlerService } from '@/lib/services/crawler.service'
 
 // Rate limiter: 10 requests per 60 seconds per user
 const limiter = rateLimit({ interval: 60_000, uniqueTokenPerInterval: 500 })
@@ -74,39 +73,20 @@ export async function POST(request: NextRequest) {
     // Import valid rows and collect errors
     const result = await bulkImportFromCsv(csvText, categoryId.trim())
 
-    // Start the crawl pipeline for every row this import created.
-    // `result.created` carries the ids the writes returned, so there is no
-    // guessing involved: a query for "recent PENDING projects in this
-    // category" would also match projects left PENDING by an earlier import
-    // and crawl them a second time.
-    if (result.created.length > 0) {
-      // Scheduled via `after()`, but sequential inside it: a 200-row import
-      // would otherwise open 200 outbound fetches at once, each holding a
-      // 15-second timeout. Looping inside one `after()` callback keeps one
-      // crawl in flight at a time without delaying the response below, and
-      // without introducing a scheduler this codebase has no other use for.
-      // The tradeoff is latency — the last project in a large import starts
-      // late — which is acceptable for a background pipeline whose status
-      // the admin polls anyway.
-      //
-      // `after()` (rather than a bare un-awaited call) matters here for the
-      // same reason as every other trigger point: on a serverless runtime
-      // (Vercel) the invocation can be frozen the moment this response is
-      // sent, which would kill the loop after crawling only the first project
-      // or two.
-      after(async () => {
-        for (const project of result.created) {
-          try {
-            await CrawlerService.triggerCrawl(project.id)
-          } catch (error) {
-            // One project failing must not stop the rest of the batch.
-            console.error(error)
-          }
-        }
-      })
-    }
+    // Imported rows are left in the queue (scoreStatus PENDING) rather than
+    // crawled here. A 3000-row import would otherwise open thousands of
+    // outbound fetches and model calls from one invocation — the platform's
+    // function timeout and the providers' rate limits both end that badly,
+    // and the rows crawled before the kill would be indistinguishable from
+    // the ones never started.
+    //
+    // A queue worker picks them up instead: `npm run score:queue` for a bulk
+    // run, or the "Process Queue" button on the submissions page. Single
+    // submissions (POST /api/submissions) still score immediately — one
+    // project is not a spike.
+    const queued = result.created.length
 
-    return NextResponse.json(result, { status: 200 })
+    return NextResponse.json({ ...result, queued }, { status: 200 })
   } catch (error) {
     return handleApiError(error)
   }

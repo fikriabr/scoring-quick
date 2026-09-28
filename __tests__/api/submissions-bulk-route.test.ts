@@ -107,19 +107,12 @@ beforeEach(() => {
 // ---------------------------------------------------------------------------
 
 describe('POST /api/submissions/bulk — rows start a crawl', () => {
-  it('triggers the crawl with the id the import reported', async () => {
-    mockBulkImport.mockResolvedValueOnce(
-      importResult([{ id: 'project-html-1' }]) as never,
-    )
-
-    const response = await POST(buildRequest())
-    await flushPendingCrawls()
-
-    expect(response.status).toBe(200)
-    expect(mockTriggerCrawl).toHaveBeenCalledExactlyOnceWith('project-html-1')
-  })
-
-  it('triggers one crawl per row, for every reported id', async () => {
+  // Imported rows are queued, not crawled here: a 3000-row import would open
+  // thousands of outbound fetches and model calls from one invocation, which
+  // the platform's function timeout and the providers' rate limits both end
+  // badly. A queue worker (`npm run score:queue`, or the admin panel) claims
+  // them instead — see lib/services/scoring-queue.service.ts.
+  it('does not crawl or score during the import', async () => {
     mockBulkImport.mockResolvedValueOnce(
       importResult([
         { id: 'project-html-1' },
@@ -128,38 +121,33 @@ describe('POST /api/submissions/bulk — rows start a crawl', () => {
       ]) as never,
     )
 
-    await POST(buildRequest())
-    await flushPendingCrawls()
-
-    expect(mockTriggerCrawl.mock.calls.map((call) => call[0])).toEqual([
-      'project-html-1',
-      'project-html-2',
-      'project-html-3',
-    ])
-  })
-
-  it('keeps crawling the rest of the batch when one crawl rejects', async () => {
-    mockBulkImport.mockResolvedValueOnce(
-      importResult([
-        { id: 'project-html-1' },
-        { id: 'project-html-2' },
-      ]) as never,
-    )
-    mockTriggerCrawl.mockRejectedValueOnce(new Error('crawl blew up'))
-    const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {})
-
     const response = await POST(buildRequest())
     await flushPendingCrawls()
 
-    // The failure is logged, never surfaced to the caller, and never left as an
-    // unhandled rejection.
     expect(response.status).toBe(200)
-    expect(mockTriggerCrawl.mock.calls.map((call) => call[0])).toEqual([
-      'project-html-1',
-      'project-html-2',
-    ])
+    expect(mockTriggerCrawl).not.toHaveBeenCalled()
+  })
 
-    consoleError.mockRestore()
+  it('reports how many rows were queued', async () => {
+    mockBulkImport.mockResolvedValueOnce(
+      importResult([{ id: 'project-html-1' }, { id: 'project-html-2' }]) as never,
+    )
+
+    const response = await POST(buildRequest())
+    const body = await response.json()
+
+    expect(body.queued).toBe(2)
+    expect(body.imported).toBe(2)
+  })
+
+  it('queues nothing when the import created nothing', async () => {
+    mockBulkImport.mockResolvedValueOnce(importResult([]) as never)
+
+    const response = await POST(buildRequest())
+    const body = await response.json()
+
+    expect(body.queued).toBe(0)
+    expect(mockTriggerCrawl).not.toHaveBeenCalled()
   })
 
   it('returns the import summary, including the created ids', async () => {
