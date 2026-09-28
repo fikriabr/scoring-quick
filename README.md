@@ -1,10 +1,11 @@
 # Scoring Quick
 
-Aplikasi penilaian kompetisi untuk project web (HTML) yang dikumpulkan peserta.
-Peserta mengumpulkan URL project-nya, sistem mengambil (fetch) markup HTML-nya
-lalu menilai strukturnya (semantik, aksesibilitas, kualitas kode) dengan AI per
-parameter berbobot. Juri manusia bisa meninjau atau menimpa skor AI sebelum
-leaderboard dipublikasikan.
+Aplikasi penilaian kompetisi untuk project web yang dikumpulkan peserta. Tiap
+submission terdiri dari dua file: dokumen ide (markdown) dan halaman HTML-nya
+(URL yang di-fetch atau source code yang ditempel). Keduanya dinilai AI di track
+terpisah dengan parameter dan bobot masing-masing, lalu digabung jadi skor akhir.
+Setiap penilaian AI diaudit agen kedua (Critic) untuk menekan bias. Juri manusia
+bisa meninjau atau menimpa skor AI sebelum leaderboard dipublikasikan.
 
 Ini adalah versi HTML-only dari [scoring-partyrock](https://github.com/fikriabr/scoring-partyrock),
 dipisah ke repo, database, dan deployment sendiri supaya keduanya bisa
@@ -18,6 +19,7 @@ markup yang ditempel manual oleh admin/peserta.
 - [Stack](#stack)
 - [Cara kerja penilaian](#cara-kerja-penilaian)
 - [Setup](#setup)
+- [Menjalankan scoring borongan](#menjalankan-scoring-borongan)
 - [Perintah npm](#perintah-npm)
 - [Model data](#model-data)
 - [Peran dan hak akses](#peran-dan-hak-akses)
@@ -29,19 +31,25 @@ markup yang ditempel manual oleh admin/peserta.
 
 - **Event dan kategori** — satu event berisi banyak kategori lomba, tiap kategori
   punya set parameter penilaiannya sendiri.
-- **Parameter berbobot** — bobot semua parameter dalam satu kategori wajib
-  berjumlah 100%, divalidasi saat disimpan. Tiap parameter punya rentang skor
-  sendiri (`minScore`–`maxScore`) dan mode `AUTO` (dinilai AI) atau `MANUAL`
-  (khusus juri).
+- **Dua track penilaian** — parameter Idea menilai dokumen markdown, parameter
+  HTML menilai halamannya. Bobot antar-track (default Idea 60% / HTML 40%) diatur
+  per kategori.
+- **Parameter berbobot** — bobot parameter di dalam tiap track wajib berjumlah
+  100%, divalidasi saat disimpan. Tiap parameter punya rentang skor sendiri
+  (`minScore`–`maxScore`) dan mode `AUTO` (dinilai AI) atau `MANUAL` (khusus juri).
 - **Submission satuan dan bulk CSV** — form tunggal atau unggah CSV. Duplikat URL
   dalam satu kategori ditolak, dan baris CSV yang gagal dilaporkan per nomor baris
   tanpa membatalkan baris lain yang valid.
 - **Fetch + analisis struktur HTML** — begitu disubmit, project langsung di-fetch:
   markup-nya disimpan, dan struktur (heading, elemen semantik, landmark, alt
   text, dsb.) dihitung lewat `lib/services/html-structure.service.ts`.
-- **Penilaian AI** — Google Gemini menilai tiap parameter `AUTO` dari struktur dan
-  markup HTML, dan memberi alasan tertulis. Skor di luar rentang diklem ke batas
-  terdekat dan ditandai.
+- **Penilaian AI multi-agen** — agen Evaluator menilai tiap parameter `AUTO`
+  dengan alasan dan kutipan bukti; agen Critic mengauditnya untuk mencari bias
+  dan meminta evaluasi ulang bila perlu. Jejak tiap putaran tersimpan dan bisa
+  dilihat di halaman detail submission. Skor di luar rentang diklem dan ditandai.
+- **Antrean scoring** — import CSV masuk antrean, dikerjakan worker
+  ([panduan CLI](docs/scoring-cli.md)) supaya ribuan project tidak menabrak
+  rate limit atau batas durasi function.
 - **Penilaian juri** — juri hanya melihat kategori yang ditugaskan padanya. Bisa
   menerima skor AI apa adanya atau menimpanya dengan komentar wajib.
 - **Leaderboard dan ekspor** — peringkat per kategori, halaman perbandingan antar
@@ -57,27 +65,42 @@ markup yang ditempel manual oleh admin/peserta.
 | Styling   | Tailwind CSS v4                                              |
 | Database  | Neon PostgreSQL via Prisma 6 (adapter HTTP `PrismaNeonHTTP`) |
 | Auth      | NextAuth v5 (Auth.js), credentials + JWT, bcrypt             |
-| AI        | Google Gemini (`@google/generative-ai`)                      |
+| AI        | Anthropic Claude (`@anthropic-ai/sdk`), opsional Google Gemini |
 | Testing   | Vitest + fast-check (property-based testing)                 |
 
 ## Cara kerja penilaian
 
+Tiap submission terdiri dari **dua file**, masing-masing dinilai di track
+sendiri dengan parameter sendiri:
+
 ```
-Submission   ──▶  Fetch HTML        ──▶  Skor AI          ──▶  Skor juri       ──▶  Leaderboard
-(URL project)     (markup+struktur)      (per parameter)       (terima/timpa)       (final)
+                ┌─▶ Track Idea (.md)  ─▶ Evaluator ─▶ Critic ─┐
+Submission ─────┤                                             ├─▶ Skor akhir ─▶ Juri ─▶ Leaderboard
+                └─▶ Track HTML        ─▶ Evaluator ─▶ Critic ─┘   (bobot 60/40)
 ```
 
-Skor akhir dihitung tertimbang, bukan rata-rata biasa. Tiap parameter menyumbang
-`score × weight / 100`, lalu dijumlahkan — lihat `calculateWeightedScore` di
-[lib/services/leaderboard.service.ts](lib/services/leaderboard.service.ts). Kalau
-satu project dinilai beberapa juri, skor tertimbang tiap juri dirata-ratakan
-lewat `calculateAverageJuryScore`.
+- **Track terisolasi.** Evaluator Idea hanya melihat dokumen markdown, evaluator
+  HTML hanya melihat halamannya. Jadi HTML yang bagus tidak bisa mengangkat skor
+  ide, dan sebaliknya.
+- **Agen Critic.** Setiap penilaian diaudit agen kedua yang mencari bias: skor
+  terangkat tampilan, halo effect, panjang dokumen, alasan yang tidak didukung
+  bukti, atau skor yang bertentangan dengan alasannya sendiri. Kalau bias
+  ditemukan, evaluasi diulang dengan masukan Critic. Kalau setelah batas
+  pengulangan masih bias, skornya tetap disimpan tapi ditandai untuk ditinjau
+  juri.
+- **Bobot dua lapis.** Di dalam tiap track, bobot parameter harus berjumlah 100%.
+  Skor akhir = `skor Idea × bobot Idea + skor HTML × bobot HTML`, diatur per
+  kategori (default 60/40) di halaman Parameters.
+- **Skor juri menimpa AI** per parameter. Kalau beberapa juri menilai parameter
+  yang sama, nilainya dirata-ratakan.
 
-`Project.sourceCode` adalah bukti utama yang dibaca AI scorer. Isinya bisa datang
-dari dua arah: ditempel langsung oleh admin/peserta di form submission atau
-halaman detail project, atau diambil otomatis lewat fetch HTTP ketika project
-disubmit (markup yang sudah ditempel manual tidak pernah ditimpa oleh hasil
-fetch).
+Model yang dipakai diatur lewat environment — lihat
+[Setup](#setup). Default: evaluator dan critic sama-sama Claude Haiku 4.5.
+
+Bukti yang dibaca AI: `Project.ideaDoc` untuk track Idea, dan `Project.sourceCode`
+plus metrik struktur untuk track HTML. Source code bisa ditempel manual atau
+diambil otomatis lewat fetch HTTP saat submit (markup yang sudah ditempel tidak
+pernah ditimpa hasil fetch).
 
 ## Setup
 
@@ -85,8 +108,11 @@ fetch).
 
 - Node.js 20.19+ atau 22 LTS
 - Database Neon PostgreSQL ([neon.tech](https://neon.tech) — free tier cukup)
-- API key Google Gemini ([aistudio.google.com/apikey](https://aistudio.google.com/apikey)
-  — free tier, tanpa kartu kredit)
+- API key Anthropic ([console.anthropic.com](https://console.anthropic.com) —
+  berbayar, dipakai evaluator dan critic)
+- Opsional: API key Google Gemini
+  ([aistudio.google.com/apikey](https://aistudio.google.com/apikey)) kalau salah
+  satu agen ingin dijalankan di Gemini
 
 ### Langkah
 
@@ -104,9 +130,15 @@ cp .env.example .env
 | --------------------------------- | ----------------------------------------------------- |
 | `DATABASE_URL`                    | Connection string Neon, sertakan `?sslmode=require`    |
 | `AUTH_SECRET` / `NEXTAUTH_SECRET` | Isi sama, hasil `openssl rand -base64 32`              |
-| `GEMINI_API_KEY`                  | API key Google AI Studio                               |
-| `GEMINI_MODEL_ID`                 | Default `gemini-flash-lite-latest`                      |
+| `ANTHROPIC_API_KEY`               | API key Anthropic — tanpa ini scoring tidak jalan      |
+| `ANTHROPIC_MODEL_ID`              | Default `claude-haiku-4-5`                             |
+| `LLM_EVALUATOR_PROVIDER`          | `anthropic` (default) atau `google`                    |
+| `LLM_CRITIC_PROVIDER`             | `anthropic` (default) atau `google`                    |
+| `GEMINI_API_KEY` / `GEMINI_MODEL_ID` | Hanya perlu kalau ada agen memakai provider `google` |
+| `CRON_SECRET`                     | Opsional — untuk menguras antrean lewat penjadwal eksternal |
 | `APP_BASE_URL`                    | Opsional — base URL deployment ini                     |
+
+Daftar lengkap beserta penjelasannya ada di [.env.example](.env.example).
 
 Dorong skema ke database dan buat akun admin pertama:
 
@@ -141,6 +173,21 @@ Buka http://localhost:3000 lalu login.
 | `npm run db:studio`         | Prisma Studio                                                    |
 | `npm run db:generate`       | Generate Prisma Client (otomatis lewat `postinstall`)             |
 | `npm run seed:admin`        | Buat akun admin awal                                                |
+| `npm run score:queue`       | Worker antrean scoring — lihat [panduan CLI](docs/scoring-cli.md)    |
+
+## Menjalankan scoring borongan
+
+Submission tunggal dinilai langsung saat disubmit. Import CSV **tidak** —
+barisnya masuk antrean, lalu dikerjakan worker:
+
+```bash
+npm run score:queue -- --concurrency 3
+```
+
+Untuk jumlah kecil, tombol **Process Queue** di halaman admin Submissions juga
+bisa dipakai. Penjelasan lengkap — opsi, cara memantau, menangani kegagalan,
+menyetel konkurensi, perkiraan waktu dan biaya — ada di
+**[docs/scoring-cli.md](docs/scoring-cli.md)**.
 
 ## Model data
 
