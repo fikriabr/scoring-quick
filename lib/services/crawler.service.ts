@@ -26,6 +26,12 @@ const FETCH_TIMEOUT_MS = 15_000
  * "status written back" that never returns. Without it, a stuck project sits
  * at PROCESSING forever with no error and no way for the admin to tell it
  * apart from one that is genuinely still running.
+ *
+ * AI scoring is deliberately *outside* this ceiling: it runs several model
+ * calls (evaluator, critic, retries) and routinely takes longer than 60s. When
+ * it sat inside the race, a perfectly healthy scoring run tripped the deadline
+ * and the project was marked "Crawl timed out" even though the crawl had long
+ * finished — or never had anything to fetch.
  */
 const CRAWL_TIMEOUT_MS = 60_000
 const CRAWL_TIMEOUT_MESSAGE = `Crawl timed out after ${CRAWL_TIMEOUT_MS / 1000} seconds`
@@ -130,9 +136,9 @@ export class CrawlerService {
     // it keeps running and checks `guard.timedOut` before writing, so a slow
     // step that eventually finishes doesn't overwrite the FAILED status
     // written below.
-    await Promise.race([
+    const shouldScore = await Promise.race([
       CrawlerService.runCrawlPipeline(projectId, guard),
-      timeoutPromise,
+      timeoutPromise.then(() => true),
     ])
 
     clearTimeout(timeoutHandle)
@@ -150,6 +156,20 @@ export class CrawlerService {
           console.error('[Crawler] Failed to record crawl timeout status:', err),
         )
     }
+
+    if (!shouldScore) return
+
+    // Awaited rather than fire-and-forget: `triggerCrawl` itself typically
+    // runs inside a Next.js `after()` callback (see the API routes that call
+    // it), which keeps the serverless invocation alive only until the promise
+    // passed to `after()` settles. Not awaiting here would let the runtime
+    // kill the scoring call exactly as if `after()` had never been used.
+    //
+    // Runs after a timed-out crawl too — a failed crawl is never the end of
+    // the road (see the catch branch in `runCrawlPipeline`), and skipping it
+    // would leave `scoreStatus` stuck at PENDING.
+    console.log('[Crawler] Triggering AI scoring for project ' + projectId + '...')
+    await ScorerService.triggerScoring(projectId).catch(console.error)
   }
 
   /**
@@ -157,11 +177,14 @@ export class CrawlerService {
    * Every status write checks `guard.timedOut` immediately before writing, so
    * a step that finishes after the 60s deadline has already declared the
    * crawl FAILED never overwrites that with a stale result.
+   *
+   * Resolves to whether scoring should follow. Scoring itself is left to
+   * `triggerCrawl` so it runs outside the crawl deadline.
    */
   private static async runCrawlPipeline(
     projectId: string,
     guard: { timedOut: boolean },
-  ): Promise<void> {
+  ): Promise<boolean> {
     let project: Awaited<ReturnType<typeof db.project.findUniqueOrThrow>> | undefined
 
     try {
@@ -172,7 +195,7 @@ export class CrawlerService {
 
       console.log('[Crawler] Starting crawl for project ' + projectId + ' (' + (project.url ?? 'no URL') + ')')
 
-      if (guard.timedOut) return
+      if (guard.timedOut) return false
 
       /**
        * No URL to fetch — the project was submitted with Source Code only
@@ -191,9 +214,7 @@ export class CrawlerService {
           where: { id: projectId },
           data: { crawlStatus: 'SUCCESS', crawlError: null },
         })
-        if (guard.timedOut) return
-        await ScorerService.triggerScoring(projectId).catch(console.error)
-        return
+        return !guard.timedOut
       }
 
       await db.project.update({
@@ -208,7 +229,7 @@ export class CrawlerService {
 
       console.log('[Crawler] Crawl succeeded - title: ' + metadata.title)
 
-      if (guard.timedOut) return
+      if (guard.timedOut) return false
 
       const widgetsJson = metadata.widgets as unknown as Prisma.InputJsonValue
       const promptsJson = metadata.prompts as unknown as Prisma.InputJsonValue
@@ -261,7 +282,7 @@ export class CrawlerService {
         )
       }
 
-      if (guard.timedOut) return
+      if (guard.timedOut) return false
 
       await db.project.update({
         where: { id: projectId },
@@ -274,18 +295,9 @@ export class CrawlerService {
 
       console.log('[Crawler] Metadata saved. Status set to SUCCESS.')
 
-      if (guard.timedOut) return
-
-      console.log('[Crawler] Triggering AI scoring for project ' + projectId + '...')
-      // Awaited rather than fire-and-forget: `triggerCrawl` itself typically
-      // runs inside a Next.js `after()` callback (see the API routes that call
-      // it), which keeps the serverless invocation alive only until the
-      // promise passed to `after()` settles. Not awaiting here would let that
-      // promise resolve before scoring finishes, letting the runtime kill the
-      // scoring call exactly as if `after()` had never been used.
-      await ScorerService.triggerScoring(projectId).catch(console.error)
+      return !guard.timedOut
     } catch (error) {
-      if (guard.timedOut) return
+      if (guard.timedOut) return false
 
       const message =
         error instanceof Error ? error.message : 'Unknown crawl error'
@@ -309,13 +321,9 @@ export class CrawlerService {
           projectId,
         )
       }
-      if (project) {
-        if (guard.timedOut) return
-        // Awaited for the same reason as the success branch above — this must
-        // finish before `triggerCrawl`'s promise resolves, or an enclosing
-        // `after()` call ends the invocation before scoring completes.
-        await ScorerService.triggerScoring(projectId).catch(console.error)
-      }
+      // No project record means `findUniqueOrThrow` itself failed — there is
+      // nothing to score.
+      return project !== undefined && !guard.timedOut
     }
   }
 
