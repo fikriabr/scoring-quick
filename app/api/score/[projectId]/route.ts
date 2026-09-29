@@ -4,6 +4,9 @@
 // Requirements: 5.1, 5.8, 9.6
 
 export const runtime = 'nodejs'
+// AI scoring runs in `after()` and can outlive the default function timeout.
+// 300s is the ceiling every Vercel plan allows.
+export const maxDuration = 300
 
 import { NextRequest, NextResponse, after } from 'next/server'
 import { auth } from '@/lib/auth/config'

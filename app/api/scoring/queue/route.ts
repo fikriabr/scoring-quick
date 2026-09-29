@@ -17,7 +17,7 @@
 // it has no timeout to work around.
 
 export const runtime = 'nodejs'
-export const maxDuration = 60
+export const maxDuration = 300
 
 import { NextRequest, NextResponse } from 'next/server'
 import { auth } from '@/lib/auth/config'
@@ -29,10 +29,11 @@ import {
 } from '@/lib/services/scoring-queue.service'
 
 /**
- * Stop claiming at 45s of a 60s budget: one project in flight can still need
- * ~15s (four model calls plus retries) after the last claim.
+ * Stop claiming at 150s of a 300s budget: a project claimed just before the
+ * cut-off still has to finish, and one scoring run (evaluator, critic rounds,
+ * retries with backoff) can take well over a minute.
  */
-const QUEUE_TIME_BUDGET_MS = 45_000
+const QUEUE_TIME_BUDGET_MS = 150_000
 
 /** Admin session, or an external scheduler holding CRON_SECRET. */
 async function authorize(request: NextRequest): Promise<boolean> {

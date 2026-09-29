@@ -25,10 +25,11 @@ terminal, memakai worker antrean `npm run score:queue`.
 | Import CSV ratusan sampai ribuan baris | **CLI** (`npm run score:queue`) |
 | Menilai ulang banyak project setelah parameter diubah | **CLI** |
 
-Alasan CLI dipakai untuk borongan: deployment di Vercel paket Hobby membatasi
-tiap function maksimal 60 detik, sedangkan satu project butuh sekitar 10 detik
-(4+ panggilan model). Endpoint antrean karena itu hanya memproses sepotong
-per panggilan. Worker CLI berjalan di komputer Anda sendiri, tanpa batas durasi.
+Alasan CLI dipakai untuk borongan: deployment di Vercel membatasi tiap function
+maksimal 300 detik (paket Hobby dengan Fluid Compute), sedangkan satu project
+bisa butuh lebih dari satu menit (evaluator, critic, dan retry). Endpoint
+antrean karena itu hanya memproses sepotong per panggilan. Worker CLI berjalan
+di komputer Anda sendiri, tanpa batas durasi.
 
 Worker CLI dan panel admin boleh jalan **bersamaan** — klaim antreannya atomik,
 jadi tidak akan ada project yang dinilai dua kali.
@@ -208,7 +209,8 @@ memicu evaluasi ulang, biaya naik sampai sekitar 30%.
 ## Alternatif tanpa CLI
 
 Kalau tidak ingin membuka terminal, antrean juga bisa dikuras lewat HTTP.
-Endpoint memproses sepotong (maksimal 45 detik) tiap dipanggil, jadi perlu
+Endpoint memproses sepotong (berhenti mengambil project baru setelah 150 detik)
+tiap dipanggil, jadi perlu
 dipanggil berulang:
 
 ```bash

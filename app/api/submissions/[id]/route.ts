@@ -5,6 +5,9 @@
 // Requirements: 5.2, 5.3, 5.4
 
 export const runtime = 'nodejs'
+// PATCH re-runs AI scoring in `after()`, which can outlive the default
+// function timeout. 300s is the ceiling every Vercel plan allows.
+export const maxDuration = 300
 
 import { NextRequest, NextResponse, after } from 'next/server'
 import { auth } from '@/lib/auth/config'

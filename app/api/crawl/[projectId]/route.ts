@@ -4,6 +4,10 @@
 // Requirements: 4.1, 4.4, 4.6, 9.6
 
 export const runtime = 'nodejs'
+// The `after()` callback runs the crawl and the AI scoring that follows it;
+// scoring alone can outlive the default function timeout. 300s is the ceiling
+// every Vercel plan allows.
+export const maxDuration = 300
 
 import { NextRequest, NextResponse, after } from 'next/server'
 import { auth } from '@/lib/auth/config'
