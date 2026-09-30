@@ -13,6 +13,7 @@ export const ADMIN_PATHS = [
   '/api/categories',
   '/api/parameters',
   '/api/users',
+  '/api/sync',
 ] as const
 
 export type Role = 'ADMIN' | 'JURY'

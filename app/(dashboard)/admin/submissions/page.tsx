@@ -32,6 +32,7 @@ export default async function AdminSubmissionsPage() {
     url: p.url,
     participantName: p.participantName,
     teamName: p.teamName,
+    projectTitle: p.projectTitle,
     crawlStatus: p.crawlStatus,
     scoreStatus: p.scoreStatus,
     categoryId: p.categoryId,

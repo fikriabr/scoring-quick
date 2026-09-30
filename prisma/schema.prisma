@@ -137,6 +137,18 @@ model Project {
   url             String?
   participantName String
   teamName        String?
+  /// Project title as the participant submitted it. Filled by the source-DB
+  /// sync; manual and CSV submissions leave it empty.
+  projectTitle    String?
+  /// Team members as submitted, comma-separated. Filled by the source-DB sync.
+  teamMembers     String?
+  /// Short project description as submitted. Filled by the source-DB sync.
+  description     String?
+  /// `submissions.id` in the source database (SOURCE_DATABASE_URL) this
+  /// project was synced from. Unique, so one source row can never become two
+  /// projects; released (set to null) when a synced project is soft-deleted
+  /// and the row is synced again.
+  sourceSubmissionId Int? @unique
   sourceCode      String?
   /// The idea document (markdown) — evidence for the IDEA track.
   ideaDoc         String?

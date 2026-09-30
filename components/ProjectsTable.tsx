@@ -20,6 +20,8 @@ export type SerializedProject = {
   url: string | null
   participantName: string
   teamName: string | null
+  /** Set on projects synced from the source database. */
+  projectTitle?: string | null
   crawlStatus: string
   scoreStatus: string
   categoryId: string
@@ -175,6 +177,9 @@ function ProjectRow({ project }: { project: SerializedProject }) {
         <div className="font-medium text-gray-900">
           {project.participantName}
         </div>
+        {project.projectTitle && (
+          <div className="text-xs text-gray-700 mt-0.5">{project.projectTitle}</div>
+        )}
         {project.teamName && (
           <div className="text-xs text-gray-500 mt-0.5">{project.teamName}</div>
         )}

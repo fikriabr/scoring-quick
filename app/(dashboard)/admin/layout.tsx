@@ -62,6 +62,13 @@ export default async function AdminLayout({
             Submissions
           </Link>
           <Link
+            href="/admin/sync"
+            className="flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium text-slate-300 transition-colors hover:bg-slate-800 hover:text-white"
+          >
+            <span className="text-base">🔄</span>
+            Sync
+          </Link>
+          <Link
             href="/admin/users"
             className="flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium text-slate-300 transition-colors hover:bg-slate-800 hover:text-white"
           >
@@ -126,6 +133,13 @@ export default async function AdminLayout({
         >
           <span className="text-lg">📝</span>
           Submissions
+        </Link>
+        <Link
+          href="/admin/sync"
+          className="flex flex-1 flex-col items-center gap-0.5 py-2 text-xs text-gray-600 hover:text-blue-600"
+        >
+          <span className="text-lg">🔄</span>
+          Sync
         </Link>
         <Link
           href="/admin/users"
