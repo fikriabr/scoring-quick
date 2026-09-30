@@ -7,6 +7,7 @@
 
 'use client'
 
+import Link from 'next/link'
 import { useEffect, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 
@@ -17,9 +18,33 @@ const POLL_INTERVAL_MS = 1_000
 
 interface ProcessingBannerProps {
   projectId: string
+  /** Whether there is a page to fetch at all; synced/pasted projects have none. */
+  hasUrl: boolean
   crawlStatus: string
   crawlError: string | null
   scoreStatus: string
+}
+
+/**
+ * What the pipeline is doing right now, in words. PENDING means *nothing is
+ * running yet*: a single submission leaves it within a second, but an imported
+ * or synced project stays there until a queue worker claims it — so it reads
+ * as queued, with where to start it, rather than as work in progress.
+ */
+function describeStage(hasUrl: boolean, crawlStatus: string, scoreStatus: string) {
+  if (crawlStatus === 'PROCESSING') {
+    return { queued: false, text: 'Fetching page markup and analyzing HTML structure...' }
+  }
+  if (scoreStatus === 'PROCESSING') {
+    return { queued: false, text: 'Running AI scoring on each parameter...' }
+  }
+  return {
+    queued: true,
+    text:
+      crawlStatus === 'PENDING' && hasUrl
+        ? 'Queued — waiting to fetch the page and run AI scoring.'
+        : 'Queued — waiting for AI scoring to start.',
+  }
 }
 
 type Status = {
@@ -30,6 +55,7 @@ type Status = {
 
 export default function ProcessingBanner({
   projectId,
+  hasUrl,
   crawlStatus: initialCrawlStatus,
   crawlError: initialCrawlError,
   scoreStatus: initialScoreStatus,
@@ -58,6 +84,14 @@ export default function ProcessingBanner({
     syncedFrom.crawlError !== initialCrawlError ||
     syncedFrom.scoreStatus !== initialScoreStatus
   ) {
+    // A new run started (e.g. Retry Score after a finished one): count its
+    // time from zero, not on top of the previous run's.
+    const wasRunning =
+      ACTIVE_STATUSES.has(status.crawlStatus) || ACTIVE_STATUSES.has(status.scoreStatus)
+    const nowRunning =
+      ACTIVE_STATUSES.has(initialCrawlStatus) || ACTIVE_STATUSES.has(initialScoreStatus)
+    if (!wasRunning && nowRunning) setElapsedSeconds(0)
+
     setSyncedFrom({
       crawlStatus: initialCrawlStatus,
       crawlError: initialCrawlError,
@@ -83,6 +117,9 @@ export default function ProcessingBanner({
 
   useEffect(() => {
     if (!isActive) return
+    // Became active from props (Retry button + refresh) rather than from a
+    // poll: mark it, so the poll that sees the run finish still refreshes.
+    wasActiveRef.current = true
 
     const poll = setInterval(async () => {
       setElapsedSeconds((s) => s + 1)
@@ -124,12 +161,7 @@ export default function ProcessingBanner({
 
   if (!isActive) return null
 
-  const stage =
-    ACTIVE_STATUSES.has(crawlStatus)
-      ? crawlStatus === 'PENDING'
-        ? 'Waiting to fetch the page...'
-        : 'Fetching page markup and analyzing HTML structure...'
-      : 'Running AI scoring on each parameter...'
+  const stage = describeStage(hasUrl, crawlStatus, scoreStatus)
 
   return (
     <div className="rounded-xl bg-blue-50 p-4 ring-1 ring-blue-200">
@@ -138,8 +170,17 @@ export default function ProcessingBanner({
           className="h-2 w-2 shrink-0 rounded-full bg-blue-500 animate-pulse"
           aria-hidden="true"
         />
-        <p className="text-sm font-medium text-blue-900">{stage}</p>
+        <p className="text-sm font-medium text-blue-900">{stage.text}</p>
       </div>
+      {stage.queued && (
+        <p className="mt-1 text-xs text-blue-800">
+          Imported and synced submissions are scored by the queue: use{' '}
+          <Link href="/admin/submissions" className="font-medium underline">
+            Process Queue on the Submissions page
+          </Link>{' '}
+          or run <code>npm run score:queue</code>.
+        </p>
+      )}
 
       {/* Indeterminate progress bar — there's no real percentage to report,
           this just signals "still moving" while polling continues. */}
@@ -149,7 +190,7 @@ export default function ProcessingBanner({
 
       <div className="mt-2 flex flex-wrap items-center justify-between gap-2 text-xs text-blue-700">
         <span>
-          Elapsed: {elapsedSeconds}s · checking again every 1s
+          {stage.queued ? 'Waiting' : 'Elapsed'}: {elapsedSeconds}s · checking again every 1s
         </span>
         {crawlError && (
           <span className="text-amber-700">Last crawl error: {crawlError}</span>

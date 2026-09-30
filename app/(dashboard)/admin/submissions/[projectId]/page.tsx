@@ -71,6 +71,7 @@ export default async function ProjectDetailPage({ params }: PageProps) {
       {/* Live status while crawling/scoring is still running */}
       <ProcessingBanner
         projectId={project.id}
+        hasUrl={Boolean(project.url)}
         crawlStatus={project.crawlStatus}
         crawlError={project.crawlError}
         scoreStatus={project.scoreStatus}
@@ -83,8 +84,19 @@ export default async function ProjectDetailPage({ params }: PageProps) {
             <h1 className="text-2xl font-bold tracking-tight text-gray-900">
               {project.participantName}
             </h1>
+            {project.projectTitle && (
+              <p className="mt-1 text-base font-medium text-gray-800">{project.projectTitle}</p>
+            )}
             {project.teamName && (
               <p className="mt-1 text-sm text-gray-500">{project.teamName}</p>
+            )}
+            {project.teamMembers && (
+              <p className="mt-1 text-sm text-gray-500">Team: {project.teamMembers}</p>
+            )}
+            {project.description && (
+              <p className="mt-2 max-w-2xl text-sm text-gray-600 whitespace-pre-line">
+                {project.description}
+              </p>
             )}
             {project.url ? (
               <a
@@ -104,6 +116,11 @@ export default async function ProjectDetailPage({ params }: PageProps) {
               <span className="rounded-md bg-gray-50 px-2 py-1">
                 Category: {project.category.name}
               </span>
+              {project.sourceSubmissionId != null && (
+                <span className="rounded-md bg-gray-50 px-2 py-1">
+                  Synced from source #{project.sourceSubmissionId}
+                </span>
+              )}
               <StatusBadge status={project.crawlStatus} />
               <StatusBadge status={project.scoreStatus} />
               {!project.isActive && (

@@ -708,37 +708,56 @@ export function RetryButton({
   title?: string
 }) {
   const [isPending, startTransition] = useTransition()
+  const [error, setError] = useState<string | null>(null)
   const router = useRouter()
 
   const label = type === 'crawl' ? 'Retry Crawl' : 'Retry Score'
 
   function handleClick() {
+    setError(null)
     startTransition(async () => {
       const endpoint =
         type === 'crawl'
           ? `/api/crawl/${projectId}?action=retrigger`
           : `/api/score/${projectId}`
 
-      await fetch(endpoint, { method: 'POST' })
+      try {
+        const res = await fetch(endpoint, { method: 'POST' })
+        if (!res.ok) {
+          const body = await res.json().catch(() => null)
+          setError(body?.message ?? `${label} failed (HTTP ${res.status}).`)
+        }
+      } catch {
+        setError(`${label} failed: network error.`)
+      }
+      // The route marks the run as started before it responds, so this
+      // refresh already sees PROCESSING and the page's banner starts polling.
       router.refresh()
     })
   }
 
   return (
-    <button
-      type="button"
-      onClick={handleClick}
-      disabled={disabled || isPending}
-      title={title}
-      className={`px-2.5 py-1 text-xs font-medium rounded-full transition-colors ${
-        disabled || isPending
-          ? 'bg-gray-100 text-gray-400 cursor-not-allowed'
-          : type === 'crawl'
-            ? 'bg-blue-50 text-blue-700 hover:bg-blue-100'
-            : 'bg-purple-50 text-purple-700 hover:bg-purple-100'
-      }`}
-    >
-      {isPending ? '...' : label}
-    </button>
+    <span className="inline-flex items-center gap-2">
+      <button
+        type="button"
+        onClick={handleClick}
+        disabled={disabled || isPending}
+        title={title}
+        className={`px-2.5 py-1 text-xs font-medium rounded-full transition-colors ${
+          disabled || isPending
+            ? 'bg-gray-100 text-gray-400 cursor-not-allowed'
+            : type === 'crawl'
+              ? 'bg-blue-50 text-blue-700 hover:bg-blue-100'
+              : 'bg-purple-50 text-purple-700 hover:bg-purple-100'
+        }`}
+      >
+        {isPending ? '...' : label}
+      </button>
+      {error && (
+        <span role="alert" className="text-xs text-red-600">
+          {error}
+        </span>
+      )}
+    </span>
   )
 }

@@ -66,18 +66,57 @@ export async function POST(
       )
     }
 
+    if (project.crawlStatus === 'PROCESSING') {
+      return NextResponse.json(
+        { error: 'Conflict', message: 'A crawl is already running for this project.', code: 'ALREADY_RUNNING' },
+        { status: 409 },
+      )
+    }
+
+    // Mark the crawl as started *before* responding, for the same reason as
+    // the score route: the crawl only begins in `after()`, and the client's
+    // refresh right after this response would otherwise still read the old
+    // status and never show the processing banner. A retrigger also re-scores,
+    // so its score is marked PENDING here too.
+    await db.project.update({
+      where: { id: projectId },
+      data: {
+        crawlStatus: 'PROCESSING',
+        crawlError: null,
+        ...(action === 'retrigger' ? { scoreStatus: 'PENDING' as const } : {}),
+      },
+    })
+
+    // Covers a failure before the pipeline writes its own status (e.g. the
+    // metadata delete in a retrigger), which would otherwise leave the row
+    // PROCESSING.
+    const recordFailure = async (error: unknown) => {
+      console.error('[Crawl] Retry failed for project ' + projectId + ':', error)
+      await db.project
+        .update({
+          where: { id: projectId },
+          data: {
+            crawlStatus: 'FAILED',
+            crawlError: error instanceof Error ? error.message : String(error),
+          },
+        })
+        .catch((updateError) =>
+          console.error('[Crawl] Could not record failure for ' + projectId + ':', updateError),
+        )
+    }
+
     // Trigger the crawl asynchronously without blocking the response.
     // Scheduled via `after()` so the serverless invocation stays alive until
     // the crawl (and the scoring it chains into) actually finishes — a bare
     // un-awaited promise can be killed by the runtime as soon as this response
     // is sent.
     if (action === 'retrigger') {
-      after(() => CrawlerService.retriggerCrawl(projectId).catch(console.error))
+      after(() => CrawlerService.retriggerCrawl(projectId).catch(recordFailure))
     } else {
-      after(() => CrawlerService.triggerCrawl(projectId).catch(console.error))
+      after(() => CrawlerService.triggerCrawl(projectId).catch(recordFailure))
     }
 
-    // Return the current project status (will transition to PROCESSING shortly)
+    // Return the current project status (already PROCESSING, written above)
     const updatedProject = await db.project.findUnique({
       where: { id: projectId },
       select: {
