@@ -41,6 +41,19 @@ export async function PUT(
     const body = await request.json()
     const data = UpdateUserSchema.parse(body)
 
+    // Demoting yourself ends your admin session's reach on the next request —
+    // with a single admin that locks everyone out of the admin panel.
+    if (id === session.user.id && data.role && data.role !== 'ADMIN') {
+      return NextResponse.json(
+        {
+          error: 'Conflict',
+          message: 'You cannot remove your own admin role. Ask another admin to do it.',
+          code: 'SELF_DEMOTION',
+        },
+        { status: 409 },
+      )
+    }
+
     // Check user exists
     const existing = await db.user.findUnique({ where: { id } })
     if (!existing) {
@@ -87,6 +100,17 @@ export async function DELETE(
 
     const { id } = await context.params
 
+    if (id === session.user.id) {
+      return NextResponse.json(
+        {
+          error: 'Conflict',
+          message: 'You cannot delete your own account. Ask another admin to do it.',
+          code: 'SELF_DELETE',
+        },
+        { status: 409 },
+      )
+    }
+
     // Check user exists
     const existing = await db.user.findUnique({ where: { id } })
     if (!existing) {
@@ -96,6 +120,8 @@ export async function DELETE(
       )
     }
 
+    // A user with jury assignments, scores or audit entries is still
+    // referenced; `handleApiError` turns the foreign-key refusal into a 409.
     await db.user.delete({ where: { id } })
 
     return new NextResponse(null, { status: 204 })

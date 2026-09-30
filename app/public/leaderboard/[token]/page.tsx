@@ -48,12 +48,15 @@ export default async function PublicLeaderboardPage({ params }: PageProps) {
             </thead>
             <tbody className="divide-y divide-gray-100">
               {projects.map((project) => (
-                <tr key={project.id} className="hover:bg-gray-50">
+                <tr key={project.rank} className="hover:bg-gray-50">
                   <td className="px-4 py-3 text-sm font-medium text-gray-900">
                     {project.rank}
                   </td>
                   <td className="px-4 py-3 text-sm text-gray-900">
                     <div>{project.participantName}</div>
+                    {project.projectTitle && (
+                      <div className="text-xs text-gray-700">{project.projectTitle}</div>
+                    )}
                     {project.teamName && (
                       <div className="text-xs text-gray-500">
                         {project.teamName}

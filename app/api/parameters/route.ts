@@ -11,6 +11,7 @@ import {
   saveParameterSet,
   ParametersHaveJuryScoresError,
 } from '@/lib/services/parameter.service'
+import { recalculateCategoryScores } from '@/lib/services/final-score.service'
 
 // -----------------------------------------------------------------------
 // GET /api/parameters?categoryId=xxx — List all parameters for a category
@@ -74,6 +75,9 @@ export async function POST(request: NextRequest) {
 
     // saveParameterSet validates via ParameterSetSchema (total weight = 100%)
     const created = await saveParameterSet(categoryId, parameters)
+    // New weights/ranges change every project's final score, exactly as in
+    // the admin UI's save action.
+    await recalculateCategoryScores(categoryId)
     return NextResponse.json(created, { status: 201 })
   } catch (error) {
     if (error instanceof ParametersHaveJuryScoresError) {

@@ -5,6 +5,75 @@
 import ExcelJS from 'exceljs'
 import type { ProjectWithScores } from '@/types'
 
+/** A parameter column of the export, in the order the category lists them. */
+export interface ExportParameter {
+  id: string
+  name: string
+}
+
+/**
+ * The parameter columns. The category's own parameters when the caller has
+ * them — that gives real names, their order, and a column for MANUAL
+ * parameters no AI ever scored. Without them, every parameter id that appears
+ * in any score, named by its id.
+ */
+function resolveParameters(
+  projects: ProjectWithScores[],
+  parameters?: ExportParameter[],
+): ExportParameter[] {
+  if (parameters && parameters.length > 0) return parameters
+  const seen = new Map<string, string>()
+  for (const project of projects) {
+    for (const score of [...project.aiScores, ...project.juryScores]) {
+      if (!seen.has(score.parameterId)) seen.set(score.parameterId, score.parameterId)
+    }
+    for (const ps of project.parameterScores ?? []) {
+      seen.set(ps.parameterId, ps.parameterName)
+    }
+  }
+  return [...seen].map(([id, name]) => ({ id, name }))
+}
+
+/**
+ * The jury's verdict on one parameter: the mean over every jury who scored it
+ * — the same value the final score uses — and all of their comments. Taking a
+ * single row would silently drop every other jury.
+ */
+function juryVerdict(
+  project: ProjectWithScores,
+  parameterId: string,
+): { score: number | null; comment: string } {
+  const rows = project.juryScores.filter((s) => s.parameterId === parameterId)
+  if (rows.length === 0) return { score: null, comment: '' }
+  const mean = rows.reduce((sum, s) => sum + s.score, 0) / rows.length
+  return {
+    score: rows.length === 1 ? rows[0].score : Math.round(mean * 100) / 100,
+    comment: rows
+      .map((s) => s.comment?.trim())
+      .filter((c): c is string => Boolean(c))
+      .join(' | '),
+  }
+}
+
+function aiScoreOf(project: ProjectWithScores, parameterId: string): number | null {
+  return project.aiScores.find((s) => s.parameterId === parameterId)?.score ?? null
+}
+
+const BASE_HEADERS = [
+  'Peringkat',
+  'Nama Peserta',
+  'Tim',
+  'Judul Project',
+  'URL Project',
+  'Skor Final',
+  'Skor Idea (MD)',
+  'Skor HTML',
+]
+
+function parameterHeaders(name: string): [string, string, string] {
+  return [`AI: ${name}`, `Juri (rata-rata): ${name}`, `Komentar: ${name}`]
+}
+
 // -----------------------------------------------------------------------
 // exportToExcel
 // Generates an Excel workbook buffer containing the leaderboard data.
@@ -14,77 +83,57 @@ import type { ProjectWithScores } from '@/types'
 
 export async function exportToExcel(
   projects: ProjectWithScores[],
+  parameters?: ExportParameter[],
 ): Promise<Buffer> {
   const workbook = new ExcelJS.Workbook()
   const sheet = workbook.addWorksheet('Penilaian')
+  const columnsFor = resolveParameters(projects, parameters)
 
-  // Collect all unique parameter IDs from the projects' scores
-  const parameterMap = new Map<string, string>()
-  for (const project of projects) {
-    for (const score of project.aiScores) {
-      if (!parameterMap.has(score.parameterId)) {
-        parameterMap.set(score.parameterId, score.parameterId)
-      }
-    }
-    if (project.parameterScores) {
-      for (const ps of project.parameterScores) {
-        if (!parameterMap.has(ps.parameterId)) {
-          parameterMap.set(ps.parameterId, ps.parameterName)
-        } else if (parameterMap.get(ps.parameterId) === ps.parameterId) {
-          // Replace ID with actual name if available
-          parameterMap.set(ps.parameterId, ps.parameterName)
-        }
-      }
-    }
-  }
-
-  // Base columns
-  const columns: Partial<ExcelJS.Column>[] = [
-    { header: 'Peringkat', key: 'rank', width: 10 },
-    { header: 'Nama Peserta', key: 'participantName', width: 25 },
-    { header: 'Tim', key: 'teamName', width: 20 },
-    { header: 'URL Project', key: 'url', width: 40 },
-    { header: 'Skor Final', key: 'finalScore', width: 12 },
-    { header: 'Skor Idea (MD)', key: 'ideaScore', width: 14 },
-    { header: 'Skor HTML', key: 'htmlScore', width: 12 },
+  const baseKeys = [
+    'rank',
+    'participantName',
+    'teamName',
+    'projectTitle',
+    'url',
+    'finalScore',
+    'ideaScore',
+    'htmlScore',
   ]
+  const baseWidths = [10, 25, 20, 30, 40, 12, 14, 12]
+  const columns: Partial<ExcelJS.Column>[] = BASE_HEADERS.map((header, i) => ({
+    header,
+    key: baseKeys[i],
+    width: baseWidths[i],
+  }))
 
-  // Dynamic columns per parameter
-  const parameterIds = Array.from(parameterMap.keys())
-  for (const paramId of parameterIds) {
-    const name = parameterMap.get(paramId) ?? paramId
+  for (const param of columnsFor) {
+    const [ai, jury, comment] = parameterHeaders(param.name)
     columns.push(
-      { header: `AI: ${name}`, key: `ai_${paramId}`, width: 15 },
-      { header: `Juri: ${name}`, key: `jury_${paramId}`, width: 15 },
-      { header: `Komentar: ${name}`, key: `comment_${paramId}`, width: 25 },
+      { header: ai, key: `ai_${param.id}`, width: 15 },
+      { header: jury, key: `jury_${param.id}`, width: 15 },
+      { header: comment, key: `comment_${param.id}`, width: 25 },
     )
   }
 
   sheet.columns = columns
 
-  // Add rows
   for (const project of projects) {
     const row: Record<string, unknown> = {
       rank: project.rank ?? null,
       participantName: project.participantName,
       teamName: project.teamName ?? '',
-      url: project.url,
+      projectTitle: project.projectTitle ?? '',
+      url: project.url ?? '',
       finalScore: project.finalScore,
       ideaScore: project.ideaScore ?? null,
       htmlScore: project.htmlScore ?? null,
     }
 
-    // Populate AI scores
-    for (const score of project.aiScores) {
-      row[`ai_${score.parameterId}`] = score.score
-    }
-
-    // Populate jury scores and comments
-    for (const score of project.juryScores) {
-      row[`jury_${score.parameterId}`] = score.score
-      if (score.comment) {
-        row[`comment_${score.parameterId}`] = score.comment
-      }
+    for (const param of columnsFor) {
+      const verdict = juryVerdict(project, param.id)
+      row[`ai_${param.id}`] = aiScoreOf(project, param.id)
+      row[`jury_${param.id}`] = verdict.score
+      row[`comment_${param.id}`] = verdict.comment
     }
 
     sheet.addRow(row)
@@ -100,80 +149,61 @@ export async function exportToExcel(
 // Requirements: 8.3
 // -----------------------------------------------------------------------
 
-export function exportToCsv(projects: ProjectWithScores[]): string {
-  // Collect all unique parameter IDs
-  const parameterMap = new Map<string, string>()
-  for (const project of projects) {
-    for (const score of project.aiScores) {
-      if (!parameterMap.has(score.parameterId)) {
-        parameterMap.set(score.parameterId, score.parameterId)
-      }
-    }
-    if (project.parameterScores) {
-      for (const ps of project.parameterScores) {
-        if (!parameterMap.has(ps.parameterId)) {
-          parameterMap.set(ps.parameterId, ps.parameterName)
-        } else if (parameterMap.get(ps.parameterId) === ps.parameterId) {
-          parameterMap.set(ps.parameterId, ps.parameterName)
-        }
-      }
-    }
-  }
+/**
+ * Byte-order mark: without it Excel opens a UTF-8 CSV in the local ANSI code
+ * page, and every non-Latin name (Thai, accented Indonesian) turns to mojibake.
+ */
+const UTF8_BOM = '﻿'
 
-  const parameterIds = Array.from(parameterMap.keys())
+export function exportToCsv(
+  projects: ProjectWithScores[],
+  parameters?: ExportParameter[],
+): string {
+  const columnsFor = resolveParameters(projects, parameters)
 
-  // Build header
-  const headers: string[] = [
-    'Peringkat',
-    'Nama Peserta',
-    'Tim',
-    'URL Project',
-    'Skor Final',
-    'Skor Idea (MD)',
-    'Skor HTML',
-  ]
+  const headers = [...BASE_HEADERS, ...columnsFor.flatMap((p) => parameterHeaders(p.name))]
+  const lines: string[] = [headers.map((h) => escapeCsvField(neutraliseFormula(h))).join(',')]
 
-  for (const paramId of parameterIds) {
-    const name = parameterMap.get(paramId) ?? paramId
-    headers.push(`AI: ${name}`, `Juri: ${name}`, `Komentar: ${name}`)
-  }
-
-  const lines: string[] = [headers.map(escapeCsvField).join(',')]
-
-  // Build data rows
   for (const project of projects) {
     const fields: string[] = [
       String(project.rank ?? ''),
-      project.participantName,
-      project.teamName ?? '',
-      project.url ?? '',
+      neutraliseFormula(project.participantName),
+      neutraliseFormula(project.teamName ?? ''),
+      neutraliseFormula(project.projectTitle ?? ''),
+      neutraliseFormula(project.url ?? ''),
       project.finalScore != null ? String(project.finalScore) : '',
       project.ideaScore != null ? String(project.ideaScore) : '',
       project.htmlScore != null ? String(project.htmlScore) : '',
     ]
 
-    for (const paramId of parameterIds) {
-      const aiScore = project.aiScores.find((s) => s.parameterId === paramId)
-      const juryScore = project.juryScores.find(
-        (s) => s.parameterId === paramId,
-      )
-
+    for (const param of columnsFor) {
+      const ai = aiScoreOf(project, param.id)
+      const verdict = juryVerdict(project, param.id)
       fields.push(
-        aiScore ? String(aiScore.score) : '',
-        juryScore ? String(juryScore.score) : '',
-        juryScore?.comment ?? '',
+        ai != null ? String(ai) : '',
+        verdict.score != null ? String(verdict.score) : '',
+        neutraliseFormula(verdict.comment),
       )
     }
 
     lines.push(fields.map(escapeCsvField).join(','))
   }
 
-  return lines.join('\n')
+  return UTF8_BOM + lines.join('\n')
 }
 
 // -----------------------------------------------------------------------
 // Helpers
 // -----------------------------------------------------------------------
+
+/**
+ * Participant-supplied text that starts like a formula (`=`, `+`, `-`, `@`)
+ * is executed by spreadsheet apps when the CSV is opened. A leading apostrophe
+ * makes it plain text. Only applied to free text — never to numeric cells.
+ */
+function neutraliseFormula(value: string): string {
+  return /^[=+\-@\t\r]/.test(value) ? `'${value}` : value
+}
 
 /**
  * Escapes a CSV field value. Wraps in quotes if the value contains

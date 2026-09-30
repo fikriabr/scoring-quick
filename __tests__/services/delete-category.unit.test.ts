@@ -29,6 +29,14 @@ vi.mock('@/lib/db', () => {
     category: {
       delete: vi.fn(),
     },
+    // A category without projects takes its parameters and jury assignments
+    // with it — both reference the category row.
+    categoryJury: {
+      deleteMany: vi.fn().mockResolvedValue({ count: 0 }),
+    },
+    parameter: {
+      deleteMany: vi.fn().mockResolvedValue({ count: 0 }),
+    },
   }
   return { db, prisma: db }
 })

@@ -134,6 +134,8 @@ export interface ProjectWithScores {
   url: string | null
   participantName: string
   teamName: string | null
+  /** Set on projects synced from the source database. */
+  projectTitle?: string | null
   crawlStatus: CrawlStatus
   scoreStatus: ScoreStatus
   finalScore: number | null

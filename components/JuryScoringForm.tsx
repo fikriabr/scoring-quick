@@ -7,6 +7,7 @@
 'use client'
 
 import { useState, useCallback } from 'react'
+import { useRouter } from 'next/navigation'
 import { TRACK_LABELS, type ScoringTrack } from '@/lib/scoring/tracks'
 
 interface ParameterData {
@@ -43,6 +44,11 @@ export default function JuryScoringForm({
   projectId,
   parameters,
 }: JuryScoringFormProps) {
+  // Saving a score recalculates the project's track and final scores; the
+  // summary above this form is server-rendered, so it is refreshed after each
+  // save. The per-parameter state below is initialised once and survives it.
+  const router = useRouter()
+
   // Initialize state per parameter
   const [states, setStates] = useState<Record<string, ParameterState>>(() => {
     const initial: Record<string, ParameterState> = {}
@@ -150,6 +156,7 @@ export default function JuryScoringForm({
           success: 'Score saved successfully',
           error: null,
         })
+        router.refresh()
       } catch {
         updateState(param.id, {
           error: 'Failed to submit score. Please try again.',
@@ -157,7 +164,7 @@ export default function JuryScoringForm({
         })
       }
     },
-    [states, projectId, updateState, isCommentRequired],
+    [states, projectId, updateState, isCommentRequired, router],
   )
 
   // Accept AI score for a parameter
@@ -201,6 +208,7 @@ export default function JuryScoringForm({
           score: param.aiScore !== null ? String(param.aiScore) : '',
           comment: '',
         })
+        router.refresh()
       } catch {
         updateState(param.id, {
           error: 'Failed to accept AI score. Please try again.',
@@ -208,7 +216,7 @@ export default function JuryScoringForm({
         })
       }
     },
-    [projectId, updateState],
+    [projectId, updateState, router],
   )
 
   if (parameters.length === 0) {

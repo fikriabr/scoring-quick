@@ -96,11 +96,12 @@ const JURY_ID = 'jury-test-id'
  */
 function setupDefaultMocks(minScore: number, maxScore: number, aiScore: number): void {
   // Jury is assigned
-  mockCategoryJuryFindFirst.mockResolvedValue({ id: 'assignment-1', userId: JURY_ID })
+  mockCategoryJuryFindFirst.mockResolvedValue({ categoryId: 'cat-1', userId: JURY_ID })
 
   // Parameter with configured range
   mockParameterFindUniqueOrThrow.mockResolvedValue({
     id: PARAMETER_ID,
+    categoryId: 'cat-1',
     minScore,
     maxScore,
     weight: 20,

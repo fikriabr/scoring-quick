@@ -125,8 +125,19 @@ export default async function JuryScoringPage({
       {/* Project header */}
       <div className="mt-4 mb-6">
         <h1 className="text-2xl font-bold">{project.participantName}</h1>
+        {project.projectTitle && (
+          <p className="text-base font-medium text-gray-800">{project.projectTitle}</p>
+        )}
         {project.teamName && (
           <p className="text-sm text-gray-500">Team: {project.teamName}</p>
+        )}
+        {project.teamMembers && (
+          <p className="text-sm text-gray-500">Members: {project.teamMembers}</p>
+        )}
+        {project.description && (
+          <p className="mt-1 max-w-2xl text-sm text-gray-600 whitespace-pre-line">
+            {project.description}
+          </p>
         )}
         {project.url ? (
           <a
@@ -176,6 +187,25 @@ export default async function JuryScoringPage({
             </pre>
           ) : (
             <p className="mt-2 text-sm text-amber-700">No idea document submitted.</p>
+          )}
+        </details>
+        {/* The page itself. Without it a project that has no URL (pasted or
+            synced HTML) leaves the jury scoring the HTML track blind. An empty
+            `sandbox` blocks scripts, forms, popups and same-origin access, so
+            participant markup cannot touch this page or the jury's session. */}
+        <details className="mt-3">
+          <summary className="cursor-pointer text-sm font-medium text-blue-700">
+            HTML page preview
+          </summary>
+          {project.sourceCode ? (
+            <iframe
+              title={`HTML preview of ${project.participantName}`}
+              sandbox=""
+              srcDoc={project.sourceCode}
+              className="mt-2 h-[600px] w-full rounded border border-gray-200 bg-white"
+            />
+          ) : (
+            <p className="mt-2 text-sm text-amber-700">No HTML source available.</p>
           )}
         </details>
       </div>
@@ -235,12 +265,12 @@ export default async function JuryScoringPage({
             </div>
           )}
         </div>
-      ) : (
+      ) : project.url ? (
         <div className="mb-6 p-4 bg-yellow-50 border border-yellow-200 rounded text-yellow-800 text-sm">
           Crawl metadata is not available for this project yet. Crawl status:{' '}
           <span className="font-medium">{project.crawlStatus}</span>
         </div>
-      )}
+      ) : null}
 
       {/* Scoring form (client component) */}
       <JuryScoringForm projectId={project.id} parameters={parameters} />

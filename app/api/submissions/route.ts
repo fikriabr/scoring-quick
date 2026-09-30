@@ -31,6 +31,14 @@ export async function POST(request: NextRequest) {
         { status: 401 },
       )
     }
+    // Submitting is an admin task, like the CSV import and the sync; a jury
+    // account must not be able to add projects to the competition.
+    if (session.user.role !== 'ADMIN') {
+      return NextResponse.json(
+        { error: 'Forbidden', message: 'Admin access required.', code: 'FORBIDDEN' },
+        { status: 403 },
+      )
+    }
 
     // Rate limit: 10 requests per minute per authenticated user
     limiter.check(10, session.user.id)

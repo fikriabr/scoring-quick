@@ -4,6 +4,7 @@
 // Requirements: 6.1, 6.2, 6.3, 6.4, 6.6, 6.7
 
 import { NextRequest, NextResponse } from 'next/server'
+import { z } from 'zod'
 import { auth } from '@/lib/auth/config'
 import { handleApiError } from '@/lib/api-error'
 import {
@@ -13,6 +14,13 @@ import {
 } from '@/lib/services/jury.service'
 
 type RouteContext = { params: Promise<{ id: string }> }
+
+/** The range check needs the parameter, so it happens in the service. */
+const JuryScoreBodySchema = z.object({
+  parameterId: z.string().min(1, 'Parameter ID is required'),
+  score: z.number().finite('Score must be a finite number'),
+  comment: z.string().max(2000, 'Comment must not exceed 2000 characters').nullish(),
+})
 
 // -----------------------------------------------------------------------
 // POST /api/projects/[id]/score — Submit jury score for a parameter
@@ -32,7 +40,7 @@ export async function POST(
     }
 
     const { id: projectId } = await context.params
-    const body = await request.json()
+    const body = JuryScoreBodySchema.parse(await request.json().catch(() => null))
 
     await submitJuryScore(
       projectId,

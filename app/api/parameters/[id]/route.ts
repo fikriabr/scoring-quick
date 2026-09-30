@@ -10,6 +10,8 @@ import {
   updateParameter,
   deleteParameter,
 } from '@/lib/services/parameter.service'
+import { recalculateCategoryScores } from '@/lib/services/final-score.service'
+import { db } from '@/lib/db'
 
 type RouteContext = { params: Promise<{ id: string }> }
 
@@ -33,6 +35,8 @@ export async function PUT(
     const { id } = await context.params
     const body = await request.json()
     const result = await updateParameter(id, body)
+    // Weight, range and track all feed the final score.
+    await recalculateCategoryScores(result.parameter.categoryId)
 
     const response = NextResponse.json(result)
 
@@ -67,7 +71,20 @@ export async function DELETE(
     }
 
     const { id } = await context.params
+    const parameter = await db.parameter.findUnique({
+      where: { id },
+      select: { categoryId: true },
+    })
+    if (!parameter) {
+      return NextResponse.json(
+        { error: 'Not Found', message: 'Parameter not found', code: 'NOT_FOUND' },
+        { status: 404 },
+      )
+    }
+    // A parameter that already has AI or jury scores is refused by the foreign
+    // keys; `handleApiError` answers that with a 409.
     await deleteParameter(id)
+    await recalculateCategoryScores(parameter.categoryId)
     return new NextResponse(null, { status: 204 })
   } catch (error) {
     return handleApiError(error)

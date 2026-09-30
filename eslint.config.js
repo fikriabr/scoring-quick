@@ -14,6 +14,21 @@ const config = [
   },
   ...coreWebVitals,
   ...typescript,
+  {
+    // A leading underscore marks a binding that is deliberately unused — a
+    // positional callback argument, or a destructured slot being skipped.
+    rules: {
+      '@typescript-eslint/no-unused-vars': [
+        'warn',
+        {
+          argsIgnorePattern: '^_',
+          varsIgnorePattern: '^_',
+          destructuredArrayIgnorePattern: '^_',
+          caughtErrorsIgnorePattern: '^_',
+        },
+      ],
+    },
+  },
 ]
 
 export default config

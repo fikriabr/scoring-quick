@@ -8,6 +8,7 @@ import { auth } from '@/lib/auth/config'
 import { handleApiError } from '@/lib/api-error'
 import { getLeaderboard } from '@/lib/services/leaderboard.service'
 import { exportToExcel, exportToCsv } from '@/lib/services/export.service'
+import { db } from '@/lib/db'
 
 // -----------------------------------------------------------------------
 // GET /api/export/[categoryId]?format=excel|csv
@@ -31,10 +32,19 @@ export async function GET(
     const { categoryId } = await params
     const format = request.nextUrl.searchParams.get('format') ?? 'csv'
 
-    const projects = await getLeaderboard(categoryId)
+    const [projects, parameters] = await Promise.all([
+      getLeaderboard(categoryId),
+      // Column names and order come from the category, so MANUAL parameters
+      // get a column too and headers read as names rather than ids.
+      db.parameter.findMany({
+        where: { categoryId },
+        orderBy: [{ track: 'asc' }, { orderIndex: 'asc' }],
+        select: { id: true, name: true },
+      }),
+    ])
 
     if (format === 'excel') {
-      const buffer = await exportToExcel(projects)
+      const buffer = await exportToExcel(projects, parameters)
       return new NextResponse(new Uint8Array(buffer), {
         status: 200,
         headers: {
@@ -47,7 +57,7 @@ export async function GET(
     }
 
     // Default: CSV
-    const csv = exportToCsv(projects)
+    const csv = exportToCsv(projects, parameters)
     return new NextResponse(csv, {
       status: 200,
       headers: {

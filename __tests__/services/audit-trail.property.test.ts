@@ -116,6 +116,7 @@ function setupMocks(opts: {
   // Parameter with range 0-100
   mockDb.parameter.findUniqueOrThrow.mockResolvedValue({
     id: opts.parameterId,
+    categoryId: 'cat1',
     minScore: 0,
     maxScore: 100,
     weight: 20,

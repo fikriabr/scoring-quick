@@ -58,7 +58,19 @@ export async function updateEvent(id: string, input: Partial<EventInput>) {
 // Deletes an event by ID.
 // Requirements: 1.4
 // -----------------------------------------------------------------------
+export class EventHasCategoriesError extends Error {
+  readonly code = 'EVENT_HAS_CATEGORIES'
+  constructor(count: number) {
+    super(`Cannot delete event: it still has ${count} category(ies). Delete its categories first.`)
+    this.name = 'EventHasCategoriesError'
+  }
+}
+
 export async function deleteEvent(id: string) {
+  // Categories reference the event, so the delete would be refused by the
+  // foreign key anyway — say why, instead of failing with a generic error.
+  const categoryCount = await db.category.count({ where: { eventId: id } })
+  if (categoryCount > 0) throw new EventHasCategoriesError(categoryCount)
   return db.event.delete({ where: { id } })
 }
 

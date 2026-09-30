@@ -53,20 +53,6 @@ const CATEGORY_POOL: ReadonlyArray<{
     { categoryId: 'c-beta', categoryName: 'apple', categoryCreatedAt: '2025-06-01T00:00:00.000Z', eventName: 'beta event' },
   ]
 
-/** Generates a single project drawn from the category pool. */
-const projectArb = (id: string): fc.Arbitrary<Project> =>
-  fc.record({
-    category: fc.constantFrom(...CATEGORY_POOL),
-    createdAt: fc.integer({ min: 0, max: 1_000_000 }),
-  }).map(({ category, createdAt }) => ({
-    id,
-    categoryId: category.categoryId,
-    categoryName: category.categoryName,
-    categoryCreatedAt: category.categoryCreatedAt,
-    eventName: category.eventName,
-    createdAt,
-  }))
-
 /**
  * Generates a NON-EMPTY list of projects (bug condition holds) sorted
  * createdAt desc, mirroring the Prisma `orderBy: { createdAt: 'desc' }` query

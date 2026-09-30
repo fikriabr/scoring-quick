@@ -39,6 +39,14 @@ export async function GET(request: NextRequest, context: RouteContext) {
         { status: 401 },
       )
     }
+    // Only the admin detail page polls this; it exposes every project's scores,
+    // which a jury must not read outside their assigned categories.
+    if (session.user.role !== 'ADMIN') {
+      return NextResponse.json(
+        { error: 'Forbidden', message: 'Admin access required.', code: 'FORBIDDEN' },
+        { status: 403 },
+      )
+    }
 
     const { id } = await context.params
 

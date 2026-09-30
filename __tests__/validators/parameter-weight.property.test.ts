@@ -73,31 +73,9 @@ function makeNamedParam(name: string, weight: number) {
   }
 }
 
-/**
- * Distribute 100 across `n` slots in a way that sums exactly to 100.
- * Returns an array of weights (each > 0, each ≤ 100).
- */
-function distributeWeights(n: number, seed: number[]): number[] {
-  // Use the seed values to get proportions, then normalise to exactly 100
-  const raw = seed.map((s) => Math.abs(s) + 1) // ensure > 0
-  const total = raw.reduce((a, b) => a + b, 0)
-  const scaled = raw.map((v) => (v / total) * 100)
-
-  // Correct for floating-point drift: adjust last element
-  const sumFirst = scaled.slice(0, -1).reduce((a, b) => a + b, 0)
-  scaled[n - 1] = 100 - sumFirst
-
-  return scaled
-}
-
 // ---------------------------------------------------------------------------
 // Arbitraries
 // ---------------------------------------------------------------------------
-
-/**
- * Arbitrary for a single valid weight (1–99 as a round number).
- */
-const validWeightArb = fc.integer({ min: 1, max: 99 })
 
 /**
  * Arbitrary for N weights that sum exactly to 100.

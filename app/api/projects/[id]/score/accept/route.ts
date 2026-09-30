@@ -4,6 +4,7 @@
 // Requirements: 6.5, 6.6, 6.7
 
 import { NextRequest, NextResponse } from 'next/server'
+import { z } from 'zod'
 import { auth } from '@/lib/auth/config'
 import { handleApiError } from '@/lib/api-error'
 import {
@@ -13,6 +14,10 @@ import {
 } from '@/lib/services/jury.service'
 
 type RouteContext = { params: Promise<{ id: string }> }
+
+const AcceptBodySchema = z.object({
+  parameterId: z.string().min(1, 'Parameter ID is required'),
+})
 
 // -----------------------------------------------------------------------
 // POST /api/projects/[id]/score/accept — Accept AI score as jury score
@@ -32,7 +37,7 @@ export async function POST(
     }
 
     const { id: projectId } = await context.params
-    const body = await request.json()
+    const body = AcceptBodySchema.parse(await request.json().catch(() => null))
 
     await acceptAiScore(
       projectId,

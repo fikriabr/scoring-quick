@@ -10,6 +10,7 @@ import {
   getEventById,
   updateEvent,
   deleteEvent,
+  EventHasCategoriesError,
 } from '@/lib/services/event.service'
 
 type RouteContext = { params: Promise<{ id: string }> }
@@ -91,6 +92,12 @@ export async function DELETE(
     await deleteEvent(id)
     return new NextResponse(null, { status: 204 })
   } catch (error) {
+    if (error instanceof EventHasCategoriesError) {
+      return NextResponse.json(
+        { error: 'Conflict', message: error.message, code: error.code },
+        { status: 409 },
+      )
+    }
     return handleApiError(error)
   }
 }

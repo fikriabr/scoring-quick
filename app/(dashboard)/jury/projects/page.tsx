@@ -94,6 +94,7 @@ export default async function JuryProjectsPage({
       url: project.url,
       participantName: project.participantName,
       teamName: project.teamName,
+      projectTitle: project.projectTitle,
       categoryId: project.category.id,
       categoryName: project.category.name,
       crawlStatus: project.crawlStatus,
@@ -165,6 +166,9 @@ export default async function JuryProjectsPage({
                 <tr key={project.id} className="border-b hover:bg-gray-50">
                   <td className="px-3 py-2">
                     <div className="font-medium">{project.participantName}</div>
+                    {project.projectTitle && (
+                      <div className="text-xs text-gray-700">{project.projectTitle}</div>
+                    )}
                     {project.teamName && (
                       <div className="text-xs text-gray-500">
                         {project.teamName}

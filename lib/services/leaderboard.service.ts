@@ -79,6 +79,7 @@ function toRankedProjects(
     url: string | null
     participantName: string
     teamName: string | null
+    projectTitle?: string | null
     crawlStatus: import('@prisma/client').CrawlStatus
     scoreStatus: import('@prisma/client').ScoreStatus
     finalScore: number | null
@@ -104,6 +105,7 @@ function toRankedProjects(
     url: project.url,
     participantName: project.participantName,
     teamName: project.teamName,
+    projectTitle: project.projectTitle ?? null,
     crawlStatus: project.crawlStatus,
     scoreStatus: project.scoreStatus,
     finalScore: project.finalScore,
@@ -156,9 +158,23 @@ export async function getLeaderboard(
 //
 // Requirements: 8.5
 // -----------------------------------------------------------------------
+/**
+ * What anyone holding the public link may see. Deliberately a whitelist: the
+ * admin leaderboard rows also carry jury user ids, private jury comments and
+ * the AI's reasoning, none of which belongs on an unauthenticated endpoint.
+ */
+export interface PublicLeaderboardEntry {
+  rank: number
+  participantName: string
+  teamName: string | null
+  projectTitle: string | null
+  url: string | null
+  finalScore: number | null
+}
+
 export async function getPublicLeaderboard(
   publicToken: string,
-): Promise<ProjectWithScores[] | null> {
+): Promise<PublicLeaderboardEntry[] | null> {
   const category = await db.category.findUnique({
     where: { publicToken },
   })
@@ -167,5 +183,13 @@ export async function getPublicLeaderboard(
     return null
   }
 
-  return getLeaderboard(category.id)
+  const ranked = await getLeaderboard(category.id)
+  return ranked.map((p) => ({
+    rank: p.rank ?? 0,
+    participantName: p.participantName,
+    teamName: p.teamName,
+    projectTitle: p.projectTitle ?? null,
+    url: p.url,
+    finalScore: p.finalScore,
+  }))
 }

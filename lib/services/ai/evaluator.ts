@@ -135,7 +135,14 @@ export function parseEvaluatorResponse(
     const row = byKey.get(key)
     if (!row) throw new Error(`Evaluator response is missing parameter ${key} (${param.name})`)
 
-    const rawScore = Number(row.score)
+    // `Number(null)` and `Number('')` are 0: a model that answers `"score":
+    // null` ("cannot judge") must be rejected, not silently scored zero.
+    const rawScore =
+      typeof row.score === 'number'
+        ? row.score
+        : typeof row.score === 'string' && row.score.trim() !== ''
+          ? Number(row.score)
+          : NaN
     if (!Number.isFinite(rawScore)) {
       throw new Error(`Evaluator returned a non-numeric score for ${key}: ${String(row.score)}`)
     }

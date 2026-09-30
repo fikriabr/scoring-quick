@@ -94,7 +94,8 @@ export async function updateCategory(id: string, input: Partial<CategoryInput>) 
 // Requirements: 1.5
 // -----------------------------------------------------------------------
 export async function deleteCategory(id: string) {
-  // Check for existing projects first
+  // Check for existing projects first (soft-deleted ones included: they still
+  // hold scores and audit history that reference this category).
   const projectCount = await db.project.count({ where: { categoryId: id } })
   if (projectCount > 0) {
     const err = new Error(
@@ -103,6 +104,14 @@ export async function deleteCategory(id: string) {
       ; (err as Error & { code: string }).code = 'CATEGORY_HAS_PROJECTS'
     throw err
   }
+  // Nearly every category has parameters (the default template) and often
+  // jury assignments; both reference it, so deleting the category alone is
+  // refused by the foreign keys. With no projects there are no scores on those
+  // parameters, so they can go with it. No transaction on the Neon HTTP
+  // adapter — the category row goes last, so a failure part-way leaves a
+  // category that still exists and can be deleted again.
+  await db.categoryJury.deleteMany({ where: { categoryId: id } })
+  await db.parameter.deleteMany({ where: { categoryId: id } })
   return db.category.delete({ where: { id } })
 }
 
@@ -151,15 +160,21 @@ export async function updateCategoryScoringConfig(
 
 // -----------------------------------------------------------------------
 // publishCategory
-// Sets isPublished = true and generates a UUID v4 publicToken.
+// Sets isPublished = true and generates a UUID v4 publicToken (once).
 // Requirements: 8.5
 // -----------------------------------------------------------------------
 export async function publishCategory(id: string) {
+  // Publishing again (a double click, a retried request) keeps the existing
+  // token: a fresh one would break every public link already shared.
+  const existing = await db.category.findUniqueOrThrow({
+    where: { id },
+    select: { publicToken: true },
+  })
   return db.category.update({
     where: { id },
     data: {
       isPublished: true,
-      publicToken: randomUUID(),
+      publicToken: existing.publicToken ?? randomUUID(),
     },
   })
 }

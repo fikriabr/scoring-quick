@@ -27,6 +27,40 @@ export class ScoreValidationError extends Error {
   }
 }
 
+/**
+ * The jury's assignment to the category that owns this (active) project.
+ * Matching through the project means a jury can only reach projects in their
+ * own categories, and a soft-deleted project is out of reach entirely.
+ */
+async function findAssignment(projectId: string, juryId: string) {
+  const assignment = await db.categoryJury.findFirst({
+    where: {
+      userId: juryId,
+      category: {
+        projects: {
+          some: { id: projectId, isActive: true },
+        },
+      },
+    },
+  })
+  if (!assignment) throw new JuryAccessError()
+  return assignment
+}
+
+/**
+ * A parameter id comes from the request body, so it has to be checked against
+ * the project: a parameter of another category would store a score that no
+ * final-score calculation ever reads.
+ */
+function assertParameterBelongsToCategory(
+  parameter: { categoryId: string },
+  categoryId: string,
+): void {
+  if (parameter.categoryId !== categoryId) {
+    throw new ScoreValidationError("This parameter does not belong to the project's category.")
+  }
+}
+
 // -----------------------------------------------------------------------
 // submitJuryScore
 // Validates jury access, score range, override threshold, then upserts
@@ -43,28 +77,17 @@ export async function submitJuryScore(
   comment: string | null,
 ): Promise<void> {
   // 1. Check jury access — jury must be assigned to the category that owns this project
-  const assignment = await db.categoryJury.findFirst({
-    where: {
-      userId: juryId,
-      category: {
-        projects: {
-          some: { id: projectId },
-        },
-      },
-    },
-  })
-
-  if (!assignment) {
-    throw new JuryAccessError()
-  }
+  const assignment = await findAssignment(projectId, juryId)
 
   // 2. Fetch parameter to get score range
   const parameter = await db.parameter.findUniqueOrThrow({
     where: { id: parameterId },
   })
+  assertParameterBelongsToCategory(parameter, assignment.categoryId)
 
-  // 3. Validate score is within configured range
-  if (score < parameter.minScore || score > parameter.maxScore) {
+  // 3. Validate score is within configured range. `Number.isFinite` first:
+  //    NaN compares false against both bounds and would slip through.
+  if (!Number.isFinite(score) || score < parameter.minScore || score > parameter.maxScore) {
     throw new ScoreValidationError(
       `Score must be between ${parameter.minScore} and ${parameter.maxScore}`,
     )
@@ -165,21 +188,9 @@ export async function acceptAiScore(
     )
   }
 
-  // Check jury access
-  const assignment = await db.categoryJury.findFirst({
-    where: {
-      userId: juryId,
-      category: {
-        projects: {
-          some: { id: projectId },
-        },
-      },
-    },
-  })
-
-  if (!assignment) {
-    throw new JuryAccessError()
-  }
+  // Check jury access. The AI score row above already ties the parameter to
+  // this project, and AI scores only exist for the project's own parameters.
+  await findAssignment(projectId, juryId)
 
   // Fetch existing jury score for audit trail
   const existingScore = await db.juryScore.findFirst({

@@ -7,7 +7,12 @@
 
 import { revalidatePath } from 'next/cache'
 import { auth } from '@/lib/auth/config'
-import { createEvent, updateEvent, deleteEvent } from '@/lib/services/event.service'
+import {
+  createEvent,
+  updateEvent,
+  deleteEvent,
+  EventHasCategoriesError,
+} from '@/lib/services/event.service'
 import { EventSchema } from '@/lib/validators/schemas'
 import { ZodError } from 'zod'
 
@@ -107,7 +112,10 @@ export async function deleteEventAction(id: string): Promise<ActionResult> {
     await deleteEvent(id)
     revalidatePath('/admin/events')
     return { success: true }
-  } catch {
+  } catch (err) {
+    if (err instanceof EventHasCategoriesError) {
+      return { success: false, error: err.message }
+    }
     return { success: false, error: 'Failed to delete event.' }
   }
 }
